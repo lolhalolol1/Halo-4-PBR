@@ -5,12 +5,14 @@ To install, simply download and drag-n-drop the "shaders" folder into your H4EK'
 Input maps are as follows:
 
 Metalness-Roughness workflow:
+
   -Albedo map
   -ORM map (R = Ambient Occlusion, G = Roughness, B = Metallness, A = Height)
   -Normal map
   -Detail normal map
 
 Spec-Gloss workflow:
+
   -Albedo Map
   -Specular Map (RGB = f0, A = glossiness)
   -Occlusion Map (RGB = Ambient Occlusion, A = height)
