@@ -201,12 +201,8 @@ void calc_pbr_initializer(
     inout float3 SH,
     const in s_common_shader_data common,
     const in float3 normal,
-#ifdef CLEARCOAT
-    const in float4 f0,
-#else
     const in float3 f0,
-#endif
-    const in float rough)
+    const in float4 material_parameters)
 {
 
     //SH = 0.0f;
@@ -216,16 +212,18 @@ void calc_pbr_initializer(
 #if (defined(xenon) || (DX_VERSION == 11)) && !defined(DISABLE_VMF)
 	float3 viewDir = common.view_dir_distance.xyz;
 	float3 albedo = common.albedo.xyz;
+    float rough = material_parameters.x;
     #ifdef CLEARCOAT
-        float ccRough = f0.w;
+        float ccRough = material_parameters.y;
+        float ccMask = material_parameters.z;
     #endif
     #ifdef ANISO
+        float aniso = material_parameters.w;
         float3 T, B;
         orthonormal_basis(normal, T, B);
 
-        //float3 Tangent = common.tangent_frame[2];
-        float aniso_rough_t = max(rough * rough * (1 - 0.3), _epsilon);
-        float aniso_rough_b = max(rough * rough * (1 + 0.3), _epsilon);
+        float aniso_rough_t = max(rough * rough * (1 - aniso), _epsilon);
+        float aniso_rough_b = max(rough * rough * (1 + aniso), _epsilon);
     #endif
 	//if (common.lighting_mode != LM_PER_PIXEL_FLOATING_SHADOW_SIMPLE && common.lighting_mode != LM_PER_PIXEL_SIMPLE)
 	{
@@ -235,26 +233,21 @@ void calc_pbr_initializer(
 		    const float directLightingMinimumForShadows = 0.3f;
 	    #endif
 
-        float shadowterm = saturate(common.lighting_data.shadow_mask.g + directLightingMinimumForShadows);
-
 		float3 viewDir = common.view_dir_distance.xyz;
-
-        float NdotV = clamp(dot(-viewDir, normal), 0.0001, 1);
-		float NdotVs = clamp(dot(-common.view_dir_distance.xyz, normal), 0.0001, 1);
 
 		float3 fresnel0 = 0;
 		float3 fresnel1 = 0;
         #ifdef ANISO
             float3 spec[2] =    
                             {
-                                calc_ggx_aniso(normal, -common.view_dir_distance.xyz, VMFGetVector(common.lighting_data.vmf_data, 0), common.lighting_data.vmf_data.coefficients[1].xyz, f0.xyz, T, B, rough, aniso_rough_t, aniso_rough_b, fresnel0),
-                                calc_ggx_aniso(normal, -common.view_dir_distance.xyz, VMFGetVector(common.lighting_data.vmf_data, 1), common.lighting_data.vmf_data.coefficients[3].xyz, f0.xyz, T, B, rough, aniso_rough_t, aniso_rough_b, fresnel1)
+                                calc_ggx_aniso(common.normal, -common.view_dir_distance.xyz, VMFGetVector(common.lighting_data.vmf_data, 0), common.lighting_data.vmf_data.coefficients[1].xyz, f0.xyz, T, B, rough, aniso_rough_t, aniso_rough_b, fresnel0),
+                                calc_ggx_aniso(common.normal, -common.view_dir_distance.xyz, VMFGetVector(common.lighting_data.vmf_data, 1), common.lighting_data.vmf_data.coefficients[3].xyz, f0.xyz, T, B, rough, aniso_rough_t, aniso_rough_b, fresnel1)
                             };
         #else
-            float3 spec[2] =    
+            float3 spec[2] =
                 {
-                    spec[0] = calc_ggx(normal, -common.view_dir_distance.xyz, VMFGetVector(common.lighting_data.vmf_data, 0), common.lighting_data.vmf_data.coefficients[1].xyz, f0.xyz, rough, fresnel0),
-                    spec[1] = calc_ggx(normal, -common.view_dir_distance.xyz, VMFGetVector(common.lighting_data.vmf_data, 1), common.lighting_data.vmf_data.coefficients[3].xyz, f0.xyz, rough, fresnel1)
+                    spec[0] = calc_ggx(common.normal, -common.view_dir_distance.xyz, VMFGetVector(common.lighting_data.vmf_data, 0), common.lighting_data.vmf_data.coefficients[1].xyz, f0.xyz, rough, fresnel0),
+                    spec[1] = calc_ggx(common.normal, -common.view_dir_distance.xyz, VMFGetVector(common.lighting_data.vmf_data, 1), common.lighting_data.vmf_data.coefficients[3].xyz, f0.xyz, rough, fresnel1)
                 };
         #endif
 
@@ -267,13 +260,13 @@ void calc_pbr_initializer(
             float3 ccFr1 = 0;
             float3 ccSpec[2] =
             {
-                calc_ggx(normal, -common.view_dir_distance.xyz, VMFGetVector(common.lighting_data.vmf_data, 0), common.lighting_data.vmf_data.coefficients[1].xyz, (float3)0.04f, ccRough, ccFr0) /* eccclobe*/,
-                calc_ggx(normal, -common.view_dir_distance.xyz, VMFGetVector(common.lighting_data.vmf_data, 1), common.lighting_data.vmf_data.coefficients[3].xyz, (float3)0.04f, ccRough, ccFr1) /* eccclobe*/
+                calc_ggx(normal, -common.view_dir_distance.xyz, VMFGetVector(common.lighting_data.vmf_data, 0), common.lighting_data.vmf_data.coefficients[1].xyz, (float3)0.04f, ccRough, ccFr0) * ccMask,
+                calc_ggx(normal, -common.view_dir_distance.xyz, VMFGetVector(common.lighting_data.vmf_data, 1), common.lighting_data.vmf_data.coefficients[3].xyz, (float3)0.04f, ccRough, ccFr1) * ccMask
             };
-            vmfDif0 *= (1 - ccFr0);
-            vmfDif1 *= (1 - ccFr1);
-            spec[0] *= pow(1 - ccFr0, 2);
-            spec[1] *= pow(1 - ccFr1, 2);
+            vmfDif0 *= (1 - (ccFr0  * ccMask));
+            vmfDif1 *= (1 - (ccFr1 * ccMask));
+            spec[0] *= pow(1 - (ccFr0 * ccMask), 2);
+            spec[1] *= pow(1 - (ccFr1 * ccMask), 2);
         #endif
         float3 diffuse = vmfDif0 + vmfDif1;
         
@@ -285,9 +278,9 @@ void calc_pbr_initializer(
                 (diffuse * (1 - common.shaderValues.y))) * ao;
 	}
 
-        SH = CompSH(common, 0.0, ao, normal);
-        brdf += (albedo * (1 - common.shaderValues.y)) * SH;     
-        SH += VMFDiffuse(common.lighting_data.vmf_data, normal, common.geometricNormal, common.lighting_data.shadow_mask.g, common.lighting_data.savedAnalyticScalar, common.lighting_mode) * ao;
+        SH = CompSH(common, 0.0, common.normal);
+        brdf += (albedo * (1 - common.shaderValues.y)) * SH * ao;     
+        SH += VMFDiffuse(common.lighting_data.vmf_data, common.normal, common.geometricNormal, common.lighting_data.shadow_mask.g, common.lighting_data.savedAnalyticScalar, common.lighting_mode) * ao;
     #endif
 }
 
@@ -296,53 +289,47 @@ void calc_pbr_inner_loop(
     inout float3 SH,
     const in s_common_shader_data common,
     const in float3 normal,
-#ifdef CLEARCOAT
-    const in float4 f0,
-#else
     const in float3 f0,
-#endif
-    const in float rough,
+    const in float4 material_parameters,
     int index)
 {
     float4 direction= common.lighting_data.light_direction_specular_scalar[index];
     float4 intensity_diffuse_scalar = common.lighting_data.light_intensity_diffuse_scalar[index];
-    float3 V = common.view_dir_distance.xyz;
+
+    float3 viewDir = common.view_dir_distance.xyz;
+    float3 albedo = common.albedo.rgb;
+    float rough = material_parameters.x;
     #ifdef CLEARCOAT
-        float ccRough = f0.w;
+        float ccRough = material_parameters.y;
+        float ccMask = material_parameters.z;
     #endif
     #ifdef ANISO
+        float aniso = material_parameters.w;
         float3 T, B;
-        orthonormal_basis(normal, T, B);
+        orthonormal_basis(common.normal, T, B);
         float aniso_rough_t = max(rough * rough * (1 - 0.3), _epsilon);
         float aniso_rough_b = max(rough * rough * (1 + 0.3), _epsilon);
     #endif
 
-    float3 albedo = common.albedo.rgb;
 	float3 fresnel = 0;
 
 #ifdef ANISO
-    float3 spec = calc_ggx_aniso(normal, -V, direction, intensity_diffuse_scalar.xyz * intensity_diffuse_scalar.w, f0.xyz, T, B, rough, aniso_rough_t, aniso_rough_b, fresnel);
+    float3 spec = calc_ggx_aniso(common.normal, -viewDir, direction, intensity_diffuse_scalar.xyz * intensity_diffuse_scalar.w, f0.xyz, T, B, rough, aniso_rough_t, aniso_rough_b, fresnel);
 #else
-	float3 spec = calc_ggx(normal, -V, direction, intensity_diffuse_scalar.xyz * intensity_diffuse_scalar.w, f0.xyz, rough, fresnel);
+	float3 spec = calc_ggx(common.normal, -viewDir, direction, intensity_diffuse_scalar.xyz * intensity_diffuse_scalar.w, f0.xyz, rough, fresnel);
 #endif
-    float3 diffuse = calc_hammon(normal, -V, direction, intensity_diffuse_scalar.xyz * intensity_diffuse_scalar.w, albedo, rough);
-    #ifdef CLEARCOAT
-        float3 ccFr = 0;
-        float3 ccSpec = calc_ggx(normal, -V, direction, intensity_diffuse_scalar.xyz * intensity_diffuse_scalar.w, (float3)0.04f, ccRough, ccFr) /* eccclobe*/;
-        diffuse *= (1 - ccFr);
-        spec *= pow(1 - ccFr, 2);
-    #endif
-    #ifdef CLEARCOAT
-        brdf += diffuse * (1 - common.shaderValues.y) + spec + ccSpec;
-    #else
-        brdf += diffuse * (1 - common.shaderValues.y) + spec;
-    #endif
+    float3 diffuse = calc_hammon(common.normal, -viewDir, direction, intensity_diffuse_scalar.xyz * intensity_diffuse_scalar.w, albedo, rough);
+#ifdef CLEARCOAT
+    float3 ccFr = 0;
+    float3 ccSpec = calc_ggx(normal, -viewDir, direction, intensity_diffuse_scalar.xyz * intensity_diffuse_scalar.w, (float3)0.04f, ccRough, ccFr) * ccMask;
+    diffuse *= (1 - (ccFr * ccMask));
+    spec *= pow(1 - (ccFr * ccMask), 2);
+    brdf += diffuse * (1 - common.shaderValues.y) + spec + ccSpec;
+#else
+    brdf += diffuse * (1 - common.shaderValues.y) + spec;
+#endif
 }
 
-#ifdef CLEARCOAT
-    MAKE_ACCUMULATING_LOOP_3_2OUT(float3, float3, calc_pbr, float3, float4, float, MAX_LIGHTING_COMPONENTS);
-#else
-    MAKE_ACCUMULATING_LOOP_3_2OUT(float3, float3, calc_pbr, float3, float3, float, MAX_LIGHTING_COMPONENTS);
-#endif
+    MAKE_ACCUMULATING_LOOP_3_2OUT(float3, float3, calc_pbr, float3, float3, float4, MAX_LIGHTING_COMPONENTS);
 
 #endif

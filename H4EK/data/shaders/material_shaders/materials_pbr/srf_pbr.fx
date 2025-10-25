@@ -28,13 +28,15 @@ DECLARE_SAMPLER(normal_map, "Normal Map", "Normal Map", "shaders/default_bitmaps
 	#include "used_float.fxh"
 #endif
 
-DECLARE_SAMPLER( combo_map, "Combo Map", "Combo Map", "shaders/default_bitmaps/bitmaps/rough_no_metal_orm.tif.tif");
+DECLARE_SAMPLER( combo_map, "Combo Map (AO, Rough, Metallic, Height)", "Combo Map", "shaders/default_bitmaps/bitmaps/color_white.tif");
 #include "next_texture.fxh"
 
-#if defined(SELFILLUM)
-	DECLARE_SAMPLER(self_illum_map, "Self Illum Map", "Self Illum Map", "shaders/default_bitmaps/bitmaps/default_diff.tif");
+#if (defined(COVENANT) || defined(CLEARCOAT) || defined(SELFILLUM))
+	DECLARE_SAMPLER( combo_map_2, "Combo Map (CC Rough, CC Mask, Cov Mask, Illum)", "Combo Map 2", "shaders/default_bitmaps/bitmaps/color_white.tif");
 	#include "next_texture.fxh"
+#endif
 
+#if defined(SELFILLUM)
 	DECLARE_RGB_COLOR_WITH_DEFAULT(si_color,	"SelfIllum Color", "", float3(0,0,0));
 	#include "used_float3.fxh"
 	DECLARE_FLOAT_WITH_DEFAULT(si_intensity,	"SelfIllum Intensity", "", 0, 1, float(1.0));
@@ -79,6 +81,11 @@ DECLARE_FLOAT_WITH_DEFAULT(roughness_offset, "Roughness Offset", "", 0, 1, float
 	#include "used_float.fxh"
 #endif
 
+#ifdef ANISO
+	DECLARE_FLOAT_WITH_DEFAULT(anisotropy,	"Anisotropy", "", -1, 1, float(0.0));
+	#include "used_float.fxh"
+#endif
+
 DECLARE_FLOAT_WITH_DEFAULT(metallic_scale, "Metallic Scale", "", 0, 1, float(1.0));
 #include "used_float.fxh"
 
@@ -98,16 +105,11 @@ DECLARE_FLOAT_WITH_DEFAULT(reflection_intensity, "Reflection Intensity", "", 0, 
 #define MATERIAL_SHADER_ANNOTATIONS 	<bool is_alpha_clip = true;>
 #endif
 
-
-
 DECLARE_FLOAT_WITH_DEFAULT(spec_coeff, "Specular Coefficient", "", 0.0, 0.07, float(0.04));
 #include "used_float.fxh"
 
 #if defined(COVENANT)
-	DECLARE_SAMPLER(cov_mask_map, "Cov Mask Map", "", "shaders/default_bitmaps/bitmaps/color_white.bitmap")
-    #include "next_texture.fxh"
-
-    DECLARE_RGB_COLOR_WITH_DEFAULT(front_color,	"Front Color Tint", "", float3(0.0,0.14,1.0));
+	DECLARE_RGB_COLOR_WITH_DEFAULT(front_color,	"Front Color Tint", "", float3(0.0,0.14,1.0));
     #include "used_float3.fxh"
     DECLARE_FLOAT_WITH_DEFAULT(front_power, "Front Offset", "", 0, 1, float(0.3));
     #include "used_float.fxh"
@@ -123,31 +125,35 @@ DECLARE_FLOAT_WITH_DEFAULT(spec_coeff, "Specular Coefficient", "", 0.0, 0.07, fl
     #include "used_float.fxh"
 
 	#if defined(NORMAL_NOISE)
-	DECLARE_SAMPLER( normal_noise_map, "Normal Noise Map", "Normal Noise Map", "shaders/default_bitmaps/bitmaps/default_normal.tif");
-	#include "next_texture.fxh"
-	DECLARE_FLOAT_WITH_DEFAULT(noise_strength,	"Noise Strength", "", 0, 1, float(1.0));
-    #include "used_float.fxh"
+		DECLARE_SAMPLER( normal_noise_map, "Normal Noise Map", "Normal Noise Map", "shaders/default_bitmaps/bitmaps/default_normal.tif");
+		#include "next_texture.fxh"
+		DECLARE_FLOAT_WITH_DEFAULT(noise_strength,	"Noise Strength", "", 0, 1, float(1.0));
+		#include "used_float.fxh"
 	#endif
 #endif
 
-///
 #if defined(ALPHA_CLIP) 
-DECLARE_FLOAT_WITH_DEFAULT(clip_threshold,		"Clipping Threshold", "", 0, 1, float(0.3));
-#include "used_float.fxh"
+	DECLARE_FLOAT_WITH_DEFAULT(clip_threshold,		"Clipping Threshold", "", 0, 1, float(0.3));
+	#include "used_float.fxh"
 
-#if defined(ALPHA_CLIP_ALBEDO_ONLY)
-DECLARE_FLOAT_WITH_DEFAULT(alpha_threshold,		"Clipping Threshold", "", 0, 1, float(0.3));
-#include "used_float.fxh"
-
-#endif
+	#if defined(ALPHA_CLIP_ALBEDO_ONLY)
+		DECLARE_FLOAT_WITH_DEFAULT(alpha_threshold,		"Clipping Threshold", "", 0, 1, float(0.3));
+		#include "used_float.fxh"
+	#endif
 #endif
 
 struct s_shader_data {
 	s_common_shader_data common;
 	float4 albedo;
 	float4 combo;
+#if (defined(COVENANT) || defined(CLEARCOAT) || defined(SELFILLUM))
+	float4 combo_2;
+#endif
 #ifdef CLEARCOAT
 	float3 clearcoat_normal;
+#endif
+#ifdef ANISO
+	float aniso;
 #endif
 	//float3 f0;
 };
@@ -157,13 +163,13 @@ void pixel_pre_lighting(
             inout s_shader_data shader_data)
 {
 	float2 uv = pixel_shader_input.texcoord.xy;
+#ifdef PARALLAX
+	uv = ParallaxMapping(pixel_shader_input, shader_data, combo_map);
+#endif
 	//float2 uv2 = pixel_shader_input.texcoord.zw;
 #ifdef BASIC_DETAIL_MAPS
 	float2 uv_det = uv;
 #endif
-	//shader_data.common.shaderValues.x = 1.0f; 			// Default specular mask
-
-
 
 	// Calculate the normal map value
 #ifdef NORMAL_NOISE
@@ -174,16 +180,14 @@ void pixel_pre_lighting(
     	float2 normal_uv   = transform_texcoord(uv, normal_map_transform);
         float3 base_normal = sample2DNormal(normal_map, normal_uv);
 		// Use the base normal map
+#ifdef CLEARCOAT
+		shader_data.clearcoat_normal = mul(base_normal, shader_data.common.tangent_frame);
+#endif
 
 #ifdef BASIC_DETAIL_MAPS
-#ifdef CLEARCOAT
-		shader_data.clearcoat_normal = mul(shader_data.common.normal, shader_data.common.tangent_frame);
-#endif
 		base_normal = CompositeDetailNormalMap(base_normal, detail_normal_map, transform_texcoord(uv_det, detail_normal_map_transform), detail_normal_strength);
 #endif
 		shader_data.common.normal = base_normal;
-
-
 
 		// Transform from tangent space to world space
 		shader_data.common.normal = mul(shader_data.common.normal, shader_data.common.tangent_frame);
@@ -193,42 +197,50 @@ void pixel_pre_lighting(
 #endif
     }
 
-    {// Sample color map.
+    {// Sample color map and combo maps.
 	    float2 color_map_uv = transform_texcoord(uv, color_map_transform);
 		shader_data.common.albedo = sample2DGamma(color_map, color_map_uv);
 
 #ifdef BASIC_DETAIL_MAPS
-			float4	detail_albedo =	sample2DGamma(detail_color_map, transform_texcoord(uv_det, detail_color_map_transform));
-			shader_data.common.albedo = albedo_colour_overlay(shader_data.common.albedo, detail_albedo);
+		float4	detail_albedo =	sample2DGamma(detail_color_map, transform_texcoord(uv_det, detail_color_map_transform));
+		shader_data.common.albedo = albedo_colour_overlay(shader_data.common.albedo, detail_albedo);
 #endif
 
 		shader_data.common.albedo.rgb *= albedo_tint;
 
 		float2 combo_map_uv	= transform_texcoord(uv, combo_map_transform);
 		shader_data.combo 	= sample2D(combo_map, combo_map_uv);
+#if (defined(COVENANT) || defined(CLEARCOAT) || defined(SELFILLUM))
+		float2 combo_map_uv_2	= transform_texcoord(uv, combo_map_2_transform);
+		shader_data.combo_2 	= sample2D(combo_map_2, combo_map_uv_2);
+#endif
 
 		shader_data.combo.r = saturate(ao_scale * shader_data.combo.r);
 		shader_data.combo.g = clamp((roughness_scale * shader_data.combo.g) + roughness_offset, 0.005, 1);
 		shader_data.combo.b = saturate((metallic_scale * shader_data.combo.b) + metallic_offset);
 
-		#ifdef CLEARCOAT
-		shader_data.combo.w = clamp((roughness_scale_coat * shader_data.combo.w) + roughness_offset_coat, 0.005, 1);
-		#endif
-		
-		#ifdef TINTABLE_VERSION
-			float4 control_map = sample2DGamma(tint_map, color_map_uv);
-			// determine surface color
-			// primary change color engine mappings, using temp values in maya for prototyping
-			float4 primary_cc = 1.0;
-			float3 secondary_cc = 1.0f;
+#ifdef CLEARCOAT
+		shader_data.combo_2.x = clamp((roughness_scale_coat * shader_data.combo_2.x) + roughness_offset_coat, 0.005, 1);
+#endif
 
-			#if defined(cgfx)  || defined(ARMOR_PREVIS)
-				primary_cc   = float4(tmp_primary_cc, 1.0);
-				secondary_cc = float4(tmp_secondary_cc,1.0);
-			#else
-				primary_cc   = ps_material_object_parameters[0];
-				secondary_cc = ps_material_object_parameters[1];
-			#endif
+#ifdef ANISO
+		shader_data.aniso = clamp(anisotropy, -1.0, 1.0);
+#endif
+		
+#ifdef TINTABLE_VERSION
+		float4 control_map = sample2DGamma(tint_map, color_map_uv);
+		// determine surface color
+		// primary change color engine mappings, using temp values in maya for prototyping
+		float4 primary_cc = 1.0;
+		float3 secondary_cc = 1.0f;
+
+	#if defined(cgfx)  || defined(ARMOR_PREVIS)
+			primary_cc   = float4(tmp_primary_cc, 1.0);
+			secondary_cc = float4(tmp_secondary_cc,1.0);
+	#else
+			primary_cc   = ps_material_object_parameters[0];
+			secondary_cc = ps_material_object_parameters[1];
+	#endif
 
 			float3 surface_colors[3] = {base_color.rgb,
 										secondary_cc.rgb,
@@ -241,31 +253,29 @@ void pixel_pre_lighting(
 			
 			// output color
 			shader_data.common.albedo.rgb = lerp(shader_data.common.albedo.rgb, shader_data.common.albedo.rgb * surface_color, saturate(control_map.r + control_map.g + control_map.b));
-		#endif
+#endif
 
-		#ifdef COVENANT
+#ifdef COVENANT
+		{
+			float cov_mask = shader_data.combo_2.z;
+	#ifdef NORMAL_NOISE
+			shader_data.common.normal = lerp(shader_data.common.normal, normal_chameleon, cov_mask);
+	#endif
+			float3 ch_colour[3] = 
 			{
-				float cov_mask = sample2D(cov_mask_map, color_map_uv).r;
-
-				float3 ch_colour[3] = 
-				{
-					front_color,
-					middle_color,
-					rim_color,
-				};
-				float offsets_div[3] =
-				{
-					front_power,
-					middle_power,
-					rim_power,
-				};
-			#ifdef NORMAL_NOISE
-				shader_data.common.albedo.rgb = lerp(shader_data.common.albedo.rgb, shader_data.common.albedo.rgb * calcChameleon(normal_chameleon, -shader_data.common.view_dir_distance.xyz, offsets_div, ch_colour), cov_mask);
-			#else
-				shader_data.common.albedo.rgb = lerp(shader_data.common.albedo.rgb, calcChameleon(shader_data.common.normal, -shader_data.common.view_dir_distance.xyz, offsets_div, ch_colour), cov_mask);
-			#endif
-			}
-		#endif	
+				front_color,
+				middle_color,
+				rim_color,
+			};
+			float offsets_div[3] =
+			{
+				front_power,
+				middle_power,
+				rim_power,
+			};
+			shader_data.common.albedo.rgb = lerp(shader_data.common.albedo.rgb, shader_data.common.albedo.rgb * calcChameleon(shader_data.common.normal, -shader_data.common.view_dir_distance.xyz, offsets_div, ch_colour), cov_mask);
+		}
+#endif
 		
 		//shader_data.common.albedo.rgb *= albedo_tint.rgb;
 	 
@@ -281,7 +291,7 @@ void pixel_pre_lighting(
 		alpha *= shader_data.common.vertexColor.a;
 #endif
 
-        #if defined(ALPHA_CLIP) && defined(ALPHA_CLIP_ALBEDO_ONLY)
+#if defined(ALPHA_CLIP) && defined(ALPHA_CLIP_ALBEDO_ONLY)
                 // Tex kill non-opaque pixels in albedo pass; tex kill opaque pixels in all other passes
                 if (shader_data.common.shaderPass != SP_SINGLE_PASS_LIGHTING)
                 {
@@ -298,15 +308,15 @@ void pixel_pre_lighting(
 					//renormalize the alpha space so we get a better control.
 					alpha = alpha / alpha_threshold;
                 }
-        #elif defined(ALPHA_CLIP)
+#elif defined(ALPHA_CLIP)
                 // Tex kill pixel
                 clip(alpha - clip_threshold);
-        #endif
+#endif
         
         shader_data.common.albedo.a = alpha;
 
-        shader_data.common.shaderValues.y = shader_data.combo.b; 
-        shader_data.common.shaderValues.x = shader_data.combo.g; 
+        shader_data.common.shaderValues.y = shader_data.combo.b;
+        shader_data.common.shaderValues.x = shader_data.combo.g;
 	}
 }
 
@@ -322,46 +332,81 @@ float4 pixel_lighting(
     float4 albedo         = shader_data.common.albedo;
     float3 normal         = shader_data.common.normal;
 	
-	// Sample combo map, r = AO, g = roughness, b = metalicness, a = depends on template
+	// Sample combo map 
+	//R = AO
+	//G = Roughness
+	//B = Metalicness
+	//A = Height
 	float4 combo 	= shader_data.combo;
-    
-     float3 specular = 0.0f;
 
-	float cavity_ao = saturate(combo.r);
+#if (defined(COVENANT) || defined(CLEARCOAT) || defined(SELFILLUM))
+	// Sample second combo map
+	//R = CC Roughness
+	//G = CC Mask
+	//B = Cov Mask
+	//A = emissive
+    float4 combo_2 	= shader_data.combo_2;
+#endif
+#ifdef ANISO
+	float aniso = shader_data.aniso;
+#endif
 
-	float rough = combo.g;
-	float metallic = combo.b; 
-
-	float3 specular_color = lerp(spec_coeff, albedo.rgb, metallic);	//get f0 from albedo with metalness mask.
+	float3 specular_color = lerp(spec_coeff, albedo.rgb, combo.b);	//get f0 from albedo with metalness mask.
 
 #ifdef CLEARCOAT //adjust f0 to account for clearcoat
-	specular_color = pow(1 - 5 * sqrt(specular_color), 2) / pow(5 - sqrt(specular_color), 2);
+	specular_color = lerp(specular_color, pow(1 - 5 * sqrt(specular_color), 2) / pow(5 - sqrt(specular_color), 2), combo_2.y);
+
+	float3 cc_normal = shader_data.clearcoat_normal;
 #endif
 
     
-	//calculate diffuse
-	float3 brdf = cavity_ao;
+	//calculate specular and diffuse BRDFs
+	float3 brdf = combo.r;
 	float3 reflection_dif = 0.0f;
-#ifdef CLEARCOAT
-	calc_pbr(brdf, reflection_dif, shader_data.common, normal, float4(specular_color, combo.w), rough);
+
+	float4 material_parameters = float4(
+		combo.y,
+#if (defined(COVENANT) || defined(CLEARCOAT) || defined(SELFILLUM))
+		combo_2.x,
+		combo_2.y,
 #else
-	calc_pbr(brdf, reflection_dif, shader_data.common, normal, specular_color, rough);
+		0.0f, 0.0f,
 #endif
+#ifdef ANISO
+		aniso
+#else
+		0.0f
+#endif
+	);
+
+	calc_pbr(
+			brdf,
+			reflection_dif,
+			shader_data.common,
+#ifdef CLEARCOAT
+			cc_normal,
+#else
+			(float3)0.0,
+#endif
+			specular_color,
+			material_parameters
+			);
+
 	// sample reflection
 	float3 view = shader_data.common.view_dir_distance.xyz;
 		 
 	float3 rVec = reflect(view, normal);
 	rVec.y *= -1;
-	float mip_index = (pow((rough - 1.0), 3.0) + 1.0) * 8.0;//max(base_lod, specular_reflectance_and_roughness.w * env_roughness_scale * 9);
+	float mip_index = (pow((combo.g - 1.0), 3.0) + 1.0) * 8.0;//max(base_lod, specular_reflectance_and_roughness.w * env_roughness_scale * 9);
 	//float mip_index = pow(rough, 1 / 2.2) * 8.0f;
 	float4 reflectionMap = sampleCUBELOD(reflection_map, rVec, mip_index);
-	float gloss = 1.f - rough;
+	float gloss = 1.0 - combo.g;
 	float3 fresnel = FresnelSchlickWithRoughness(specular_color, -view, normal, gloss);
 
-	float3 reflection = reflectionMap.a * reflectionMap.rgb * EnvBRDFApprox(fresnel, rough, max(dot(normal, -view), 0.0)) * reflection_dif;
+	float3 reflection = reflectionMap.a * reflectionMap.rgb * EnvBRDFApprox(fresnel, combo.g, max(dot(normal, -view), 0.0)) * reflection_dif;
 
 #ifdef CLEARCOAT
-	float3 fresnelCC = FresnelSchlickWithRoughness((float4)0.04f, -view, normal, (1 - combo.w));
+	float3 fresnelCC = FresnelSchlickWithRoughness((float4)0.04f, -view, normal, (1 - combo_2.x));
 	float3 reflectionCC = reflectionMap.a * reflectionMap.rgb * EnvBRDFApprox(fresnelCC, combo.w, max(dot(normal, -view), 0.0)) * reflection_dif;
 
 	reflection *= (1 - fresnelCC);
@@ -375,8 +420,7 @@ float4 pixel_lighting(
 	out_color.rgb = brdf + reflection;
 
 	#if defined(SELFILLUM)
-		float3 selfIllumColor = sample2DGamma(self_illum_map, transform_texcoord(uv, color_map_transform)).rgb;
-		float3 selfIllum = selfIllumColor * si_color * si_amount;	
+		float3 selfIllum = shader_data.combo_2.w * si_color * si_amount;	
 		out_color.rgb += selfIllum;
 
 		// Output self-illum intensity as linear luminance of the added value
@@ -385,7 +429,6 @@ float4 pixel_lighting(
 		shader_data.common.selfIllumIntensity = 0;
 	#endif
 	//out_color.rgb = metallic;
-
 	
 	//boost tint color based on distance
 	//Oli: commented this out 'cause it's not physically plausible and that bothers me. Will add back if it's required.
