@@ -211,12 +211,12 @@ void pixel_pre_lighting(
 		float2 combo_map_uv	= transform_texcoord(uv, combo_map_transform);
 		shader_data.combo 	= sample2D(combo_map, combo_map_uv);
 #if (defined(COVENANT) || defined(CLEARCOAT) || defined(SELFILLUM))
-		float2 combo_map_uv_2	= transform_texcoord(uv, combo_map_2_transform);
-		shader_data.combo_2 	= sample2D(combo_map_2, combo_map_uv_2);
+		float2 combo_map_uv_2 = transform_texcoord(uv, combo_map_2_transform);
+		shader_data.combo_2 = sample2D(combo_map_2, combo_map_uv_2);
 #endif
 
 		shader_data.combo.r = saturate(ao_scale * shader_data.combo.r);
-		shader_data.combo.g = clamp((roughness_scale * shader_data.combo.g) + roughness_offset, 0.005, 1);
+		shader_data.combo.g = clamp((roughness_scale * shader_data.combo.g) + roughness_offset, 0.03, 1);
 		shader_data.combo.b = saturate((metallic_scale * shader_data.combo.b) + metallic_offset);
 
 #ifdef CLEARCOAT
