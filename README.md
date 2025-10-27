@@ -1,8 +1,8 @@
-#Halo 4 PBR
+# Halo 4 PBR
 A set of shaders made for Halo 4 and Halo 2 Anniversary Multiplayer that allow you to use modern BRDFs for material rendering and more modern, standerdized workflows for authoring materials.
 Credit to the Oomer and Chiefster whos shaders I used as reference for how to work with Halo 4's functions, theChunkierBean for testing, and theHostileNegotiator and Amit for important help and feedback.
 
-##Installation
+## Installation
 To install, simply download and drag-n-drop the "tags" folder for the toolset you are using into the folder into your editing kit's root folder.
 
 By default, screen-space lights will not work with this shader due to them being handled in a later render pass. You can make them work by adding the files in "H4 Explicit Shaders - optional" to your
@@ -10,7 +10,7 @@ H4EK, but this will affect how some vanilla materials behave under those lights 
 aren't going to use vanilla content, this won't matter to you and you can use the explicit shaders without worry. If you are making modifications to vanilla content like the campaign, keep this in
 mind when choosing whether or not to use them.
 
-##How to Use
+## How to Use
 When working with a material in Bonobo/Foundation, at the top of the tag you can change the shader template.
 The main PBR shader templates can be found in "shaders\material_shaders\materials_pbr". 
 The older/outdated PBR shader templates can still be found in "shaders\material_shaders\materials_pbr" but I strongly recommend you use the newer ones as these will not recieve further updates.
@@ -38,7 +38,7 @@ I'll assume you're familiar enough with these to know what textures you'll need.
 
 I'll likely create a better explanation what each of these features do specifically in the future alongside explanations of new features I will be adding, but this'll have to do for now. If you have questions, DM me on Discord.
 
-##Terrain/Blended Materials
+## Terrain/Blended Materials
 For 4-way blend materials you will need to create texture arrays to use for your Albedo, ORM, and Normal maps.
 To do this:
 
