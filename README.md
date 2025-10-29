@@ -1,6 +1,6 @@
 # Halo 4 PBR
 A set of shaders made for Halo 4 and Halo 2 Anniversary Multiplayer that allow you to use modern BRDFs for material rendering and more modern, standerdized workflows for authoring materials.
-Credit to the Oomer and Chiefster whos shaders I used as reference for how to work with Halo 4's functions, theChunkierBean for testing, and theHostileNegotiator and Amit for important help and feedback.
+Credit to the Oomer and Chiefster who's shaders I used as reference for how to work with Halo 4's functions, theChunkierBean for testing, and theHostileNegotiator and Amit for important help and feedback.
 
 ## Installation
 To install, simply download and drag-n-drop the "tags" folder for the toolset you are using into the folder into your editing kit's root folder.
@@ -13,7 +13,7 @@ mind when choosing whether or not to use them.
 ## How to Use
 When working with a material in Bonobo/Foundation, at the top of the tag you can change the shader template.
 The main PBR shader templates can be found in "shaders\material_shaders\materials_pbr". 
-The older/outdated PBR shader templates can still be found in "shaders\material_shaders\materials_pbr" but I strongly recommend you use the newer ones as these will not recieve further updates.
+The older/outdated PBR shader templates can still be found in "shaders\material_shaders\materials_oli" but I strongly recommend you use the newer ones as these will not receive further updates.
 
 Depending on the template you select, different features will be available and different textures can be used or will be required.
 The most basic template usess the following textures:
@@ -27,12 +27,12 @@ The most basic template usess the following textures:
 For templates that include "cov", "em", and "coat" in the name, additional features will be useable and an additional combo map will be required with different channels being used depending on which features are included in the template.
 The channels that are used for each feature are as follows:
 
-  	-R: Clear-coat Rughness 	(for templates that allow for a clear-coat on materials, with the "coat" suffix)
+  	-R: Clear-coat Roughness 	(for templates that allow for a clear-coat on materials, with the "coat" suffix)
   	-G: Clear-coat Mask			(for templates that allow for a clear-coat on materials, with the "coat" suffix)
-	-B: Covenant Mask			(for templates that allow for irridecence on materials, with the "cov" or "covn" suffix)
+	-B: Covenant Mask			(for templates that allow for iridescence on materials, with the "cov" or "covn" suffix)
 	-A: Emissive Mask			(for templates that allow for emissive regions on materials, using the term "em")
 
-Templates that have "covn" in the name wil also allow for an extra detail normal map that's masked in by the "Covenenant Mask". 
+Templates that have "covn" in the name will also allow for an extra detail normal map that's masked in by the "Covenant Mask". 
 There are also templates that include support for detail textures ("det"), colour-change ("cc" and "cc_previs), and alpha clip ("clip")
 I'll assume you're familiar enough with these to know what textures you'll need.
 
@@ -52,7 +52,7 @@ To do this:
 
 	-Import your bitmaps folder. If it imported only one bitmap of each type without "_array" at the end, you've done it right.
 
-	-Set the correct settings for your bitmap type through the usage overide specifically.
+	-Set the correct settings for your bitmap type through the usage override specifically.
 	 (refer to the usage override settings used for bitmaps imported via Foundry if you're unsure)
 
 	-In the usage override, set "type" to array. Then save and close the bitmap.

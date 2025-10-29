@@ -80,7 +80,7 @@ float3 calc_ggx(
     float NDFdenom = max((NdotH * a2_sqrd - NdotH) * NdotH + 1.0, 0.0001);
     float NDF = a2_sqrd / (pi * NDFdenom * NDFdenom);
 
-  float L = 2.0 * NdotL / (NdotL + sqrt(a2_sqrd + (1.0 - a2_sqrd) * (NdotL * NdotL)));
+    float L = 2.0 * NdotL / (NdotL + sqrt(a2_sqrd + (1.0 - a2_sqrd) * (NdotL * NdotL)));
 	float V = 2.0 * NdotV / (NdotV + sqrt(a2_sqrd + (1.0 - a2_sqrd) * (NdotV * NdotV)));
     float G = L * V;
     
@@ -234,16 +234,6 @@ void calc_pbr_initializer(
 
 		float3 viewDir = common.view_dir_distance.xyz;
 
-        float3 L[2]=    {
-                            VMFGetVector(common.lighting_data.vmf_data, 0),
-                            VMFGetVector(common.lighting_data.vmf_data, 1)
-                        };
-
-        float NdotL[2]= {
-                            saturate(dot(common.normal, L[0])),
-                            saturate(dot(common.normal, L[1]))
-                        };
-
 		float3 fresnel0 = 0;
 		float3 fresnel1 = 0;
     #ifdef ANISO
@@ -341,5 +331,130 @@ void calc_pbr_inner_loop(
 }
 
     MAKE_ACCUMULATING_LOOP_3_2OUT(float3, float3, calc_pbr, float3, float3, float4, MAX_LIGHTING_COMPONENTS);
+
+#ifdef SKIN_BRDF
+float3 VMFSkinPBR(
+    inout float3 SH,
+    const in s_common_shader_data common,
+    const in float3 normal,
+    const in float3 f0,
+    const in float4 material_parameters,
+    const in float distortion,
+    const in float power,
+    const in float3 colour,
+    const in texture_sampler_2d lut)
+{
+    float3 albedo = common.albedo.xyz;
+    float3 fresnel0 = 0;
+    float3 fresnel1 = 0;
+    float3 view_dir = -common.view_dir_distance.xyz;
+
+    float3 L[2] = 
+    {
+        VMFGetVector(common.lighting_data.vmf_data, 0),
+        VMFGetVector(common.lighting_data.vmf_data, 1)
+    };
+
+    float3 spec[2] =
+    {
+        spec[0] = calc_ggx(common.normal, view_dir, L[0], common.lighting_data.vmf_data.coefficients[1].xyz, f0.xyz, material_parameters.y, fresnel0) * material_parameters.x,
+        spec[1] = calc_ggx(common.normal, view_dir, L[1], common.lighting_data.vmf_data.coefficients[3].xyz, f0.xyz, material_parameters.y, fresnel1) * material_parameters.x,
+    };
+
+    float3 vmfDif0, vmfDif1;
+
+	if (common.lighting_mode == LM_PER_PIXEL_FLOATING_SHADOW_SIMPLE || common.lighting_mode == LM_PER_PIXEL_SIMPLE)
+	{
+		// Just transfer the irradiance
+		vmfDif0 = albedo * (1 / pi) * (1 - fresnel0) * common.lighting_data.vmf_data.coefficients[0].xyz;
+        vmfDif1 = 0;
+	}
+	else
+	{
+	#if defined(xenon) || (DX_VERSION == 11)
+		const float directLightingMinimumForShadows = ps_bsp_lightmap_scale_constants.y;
+	#else
+		const float directLightingMinimumForShadows = 0.3f;
+	#endif
+		float shadowterm = saturate(common.lighting_data.shadow_mask.g + directLightingMinimumForShadows);
+
+		const bool allowSharpen = (common.lighting_mode != LM_PROBE && common.lighting_mode != LM_PROBE_AO && common.lighting_mode != LM_PER_PIXEL_FORGE);
+	
+		// We now store two linear SH probes
+		// [adamgold 2/13/12] now knock out direct with the character shadow (as long as we're not in the sun)
+
+        float NdotL_blur[2] =
+        {
+            dot(normal, L[0]),
+            dot(normal, L[1])
+        };
+
+        float3 skin_dif[2] =
+        {
+            sample2D(lut, float2(mad(NdotL_blur[0], 0.5f, 0.5f), material_parameters.w)).xyz,
+            sample2D(lut, float2(mad(NdotL_blur[1], 0.5f, 0.5f), material_parameters.w)).xyz
+        };
+        skin_dif[0] = float3(
+			lerp(skin_dif[0].z, skin_dif[0].x, colour.x),
+			lerp(skin_dif[0].y, skin_dif[0].x, colour.y),
+			lerp(skin_dif[0].z, skin_dif[0].x, colour.z)
+		) * 0.5f - 0.25f;
+        skin_dif[1] = float3(
+			lerp(skin_dif[1].z, skin_dif[1].x, colour.x),
+			lerp(skin_dif[1].y, skin_dif[1].x, colour.y),
+			lerp(skin_dif[1].z, skin_dif[1].x, colour.z)
+		) * 0.5f - 0.25f;	
+
+        float normalSmoothFactor[2] = 
+        {
+            saturate(1.0 - NdotL_blur[0]),
+            saturate(1.0 - NdotL_blur[1])
+        };
+        normalSmoothFactor[0] *= normalSmoothFactor[0];
+        normalSmoothFactor[1] *= normalSmoothFactor[1];
+
+        float3 view_normalG[2] = 
+        {
+            /*normalize*/(lerp(common.normal, normal, 0.3 + 0.7 * normalSmoothFactor[0])),
+            /*normalize*/(lerp(common.normal, normal, 0.3 + 0.7 * normalSmoothFactor[1]))
+        };
+
+        float3 view_normalB[2] = 
+        {
+            /*normalize*/(lerp(common.normal, normal, normalSmoothFactor[0])),
+            /*normalize*/(lerp(common.normal, normal, normalSmoothFactor[1]))
+        };
+
+        float NoL_ShadeG[2] = 
+        {
+            saturate(dot(view_normalG[0], L[0])),
+            saturate(dot(view_normalG[1], L[1]))
+        };
+        
+        float NoL_ShadeB[2] = 
+        {
+            saturate(dot(view_normalB[0], L[0])),
+            saturate(dot(view_normalB[1], L[1]))
+        };
+        
+        float3 rgbNdotL[2] = 
+        {
+            float3(saturate(NdotL_blur[0]), NoL_ShadeG[0], NoL_ShadeB[0]),
+            float3(saturate(NdotL_blur[1]), NoL_ShadeG[1], NoL_ShadeB[1]),
+        };
+        skin_dif[0] = saturate(skin_dif[0] + rgbNdotL[0]);
+        skin_dif[1] = saturate(skin_dif[1] + rgbNdotL[1]);
+
+		vmfDif0 = skin_dif[0] * (albedo / pi) * (1 - fresnel0) * material_parameters.x * common.lighting_data.vmf_data.coefficients[1].xyz * lerp(shadowterm, 1.0f, common.lighting_data.savedAnalyticScalar);
+		vmfDif1 = skin_dif[1] * (albedo / pi) * (1 - fresnel1) * material_parameters.x * common.lighting_data.vmf_data.coefficients[3].xyz;
+	}
+
+    SH = CompSH(common, 0.0, common.normal);
+    float3 brdf = albedo * (1 / pi) * SH * material_parameters.x;
+    brdf += (vmfDif0 + vmfDif1 + spec[0] + spec[1]);
+
+    return brdf;
+}
+#endif
 
 #endif
