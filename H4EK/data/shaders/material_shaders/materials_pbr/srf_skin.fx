@@ -48,10 +48,10 @@ DECLARE_FLOAT_WITH_DEFAULT(roughness_offset, "Roughness Offset", "", 0, 1, float
 DECLARE_FLOAT_WITH_DEFAULT(ss_normal_mip, "SS Normal Mip", "", 0, 4, float(2.0));
 #include "used_float.fxh"
 
-DECLARE_FLOAT_WITH_DEFAULT(ss_distortion, "SS Distortion", "", 0, 1, float(1.0));
+DECLARE_FLOAT_WITH_DEFAULT(ss_distortion, "SS Distortion", "", 0, 1, float(0.5));
 #include "used_float.fxh"
 
-DECLARE_FLOAT_WITH_DEFAULT(ss_power, "SS Power", "", 0, 100, float(0.0));
+DECLARE_FLOAT_WITH_DEFAULT(ss_power, "SS Power", "", 0, 100, float(5.0));
 #include "used_float.fxh"
 
 DECLARE_RGB_COLOR_WITH_DEFAULT(ss_colour,		"SS Colour", "", float3(1,0,0));
@@ -222,7 +222,7 @@ float4 pixel_lighting(
 	//A = Height
 	float4 combo 	= shader_data.combo;
 
-	float3 specular_color = (float3)spec_coeff;	//get f0 from albedo with metalness mask.
+	float3 specular_color = (float3)clamp(spec_coeff, 0.0, 0.07);	//get f0 from albedo with metalness mask.
     
 	//calculate specular and diffuse BRDFs
 	float3 brdf = 0;

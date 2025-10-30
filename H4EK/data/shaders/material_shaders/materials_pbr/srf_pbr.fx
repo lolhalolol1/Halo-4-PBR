@@ -215,7 +215,7 @@ void pixel_pre_lighting(
 		shader_data.combo_2 = sample2D(combo_map_2, combo_map_uv_2);
 #endif
 
-		shader_data.combo.r = saturate(ao_scale * shader_data.combo.r);
+		shader_data.combo.r = saturate(ao_scale * shader_data.combo.r + (1 - ao_scale));
 		shader_data.combo.g = clamp((roughness_scale * shader_data.combo.g) + roughness_offset, 0.03, 1);
 		shader_data.combo.b = saturate((metallic_scale * shader_data.combo.b) + metallic_offset);
 
@@ -351,7 +351,7 @@ float4 pixel_lighting(
 	float aniso = shader_data.aniso;
 #endif
 
-	float3 specular_color = lerp(spec_coeff, albedo.rgb, combo.b);	//get f0 from albedo with metalness mask.
+	float3 specular_color = lerp(clamp(spec_coeff, 0.0, 0.07), albedo.rgb, combo.b);	//get f0 from albedo with metalness mask.
 
 #ifdef CLEARCOAT //adjust f0 to account for clearcoat
 	specular_color = lerp(specular_color, pow(1 - 5 * sqrt(specular_color), 2) / pow(5 - sqrt(specular_color), 2), combo_2.y);
