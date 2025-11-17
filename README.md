@@ -5,10 +5,10 @@ Credit to the Oomer and Chiefster who's shaders I used as reference for how to w
 ## Installation
 To install, simply download and drag-n-drop the "tags" folder for the toolset you are using into the folder into your editing kit's root folder.
 
-By default, screen-space lights will not work with this shader due to them being handled in a later render pass. You can make them work by adding the files in "H4 Explicit Shaders - optional" to your
-H4EK, but this will affect how some vanilla materials behave under those lights as they can't really take into account what material shader is being used. If you just want to make custom content and
-aren't going to use vanilla content, this won't matter to you and you can use the explicit shaders without worry. If you are making modifications to vanilla content like the campaign, keep this in
-mind when choosing whether or not to use them.
+By default, screen-space lights will not work with this shader due to them being handled in a later render pass. You can make them work for PBR materias (excluding spec-gloss materials) by adding the 
+files in "H4 Explicit Shaders - optional" to your H4EK, but this will affect how some vanilla materials behave under those lights as they can't really take into account what material shader is being 
+used. If you just want to make custom content and aren't going to use vanilla content, this won't matter to you and you can use the explicit shaders without worry. If you are making modifications to 
+vanilla content like the campaign, keep this in mind when choosing whether or not to use them.
 
 ## How to Use
 When working with a material in Bonobo/Foundation, at the top of the tag you can change the shader template.
