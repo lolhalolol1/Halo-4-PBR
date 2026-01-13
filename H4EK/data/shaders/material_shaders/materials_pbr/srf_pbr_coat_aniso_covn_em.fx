@@ -1,5 +1,5 @@
 #define CLEARCOAT
-#define COVENANT
+#define IRIDESCENT
 #define NORMAL_NOISE
 #define ANISO
 #define SELFILLUM

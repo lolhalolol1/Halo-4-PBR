@@ -1,4 +1,4 @@
 #define CLEARCOAT
-#define COVENANT
+#define IRIDESCENT
 
 #include "srf_pbr.fx"

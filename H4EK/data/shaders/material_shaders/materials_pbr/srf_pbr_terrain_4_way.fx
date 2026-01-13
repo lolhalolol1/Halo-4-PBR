@@ -203,19 +203,19 @@ float4 pixel_lighting(
 	//calculate diffuse
 	float3 brdf = cavity_ao;
 	float3 reflection_dif = 0.0f;
-	calc_pbr(brdf, reflection_dif,  shader_data.common, normal, specular_color, rough);
+	calc_pbr(brdf, reflection_dif,  shader_data.common, normal, specular_color, 0.0, rough);
 	
 	// sample reflection
 	float3 view = shader_data.common.view_dir_distance.xyz;
-		 
+	float cosTheta = saturate(dot(normal, -view));
 	float3 rVec = reflect(view, normal);
 	rVec.y                  *= -1;
 	float mip_index = (pow((rough - 1.0), 3.0) + 1.0) * 8.0;//max(base_lod, specular_reflectance_and_roughness.w * env_roughness_scale * 9);
 	//float mip_index = pow(rough, 1 / 2.2) * 8.0f;
 	float4 reflectionMap = sampleCUBELOD(reflection_map, rVec, mip_index);
 	float gloss = 1.f - rough;
-	float3 fresnel = FresnelSchlickWithRoughness(specular_color, -view, normal, gloss);
-	float3 reflection = reflectionMap.a * reflectionMap.rgb * EnvBRDFApprox(fresnel, rough, max(dot(normal, -view), 0.0)) * reflection_dif;
+	float3 fresnel = fresnel_schlick_roughness(specular_color, cosTheta, gloss);
+	float3 reflection = reflectionMap.a * reflectionMap.rgb * EnvBRDFApprox(fresnel, rough, cosTheta) * reflection_dif;
 
 	//.. Finalize Output Color
     float4 out_color;

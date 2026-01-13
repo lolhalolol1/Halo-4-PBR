@@ -73,6 +73,7 @@
 #define LOOP2(func,output,i1,i2,data,static_count)			[unroll]for(int index=0;index<static_count;++index) func(output,i1,i2,data,index)
 #define LOOP3(func,output,i1,i2,i3,data,static_count)		[unroll]for(int index=0;index<static_count;++index) func(output,i1,i2,i3,data,index)
 #define LOOP3OUT2(func,output,output2,i1,i2,i3,data,static_count)		[unroll]for(int index=0;index<static_count;++index) func(output,output2,i1,i2,i3,data,index)
+#define LOOP3OUT2S(func,output,output2,i1,i2,i3,tx,data,static_count)		[unroll]for(int index=0;index<static_count;++index) func(output,output2,i1,i2,i3,tx,data,index)
 #define LOOP4(func,output,i1,i2,i3,i4,data,static_count)	[unroll]for(int index=0;index<static_count;++index) func(output,i1,i2,i3,i4,data,index)
 #define LOOP5(func,output,i1,i2,i3,i4,i5,data,static_count)	[unroll]for(int index=0;index<static_count;++index) func(output,i1,i2,i3,i4,i5,data,index)
 #else
@@ -81,6 +82,7 @@
 #define LOOP2(func,output,i1,i2,data,static_count)			for(int index=0;index<static_count;++index) func(output,i1,i2,data,index)
 #define LOOP3(func,output,i1,i2,i3,data,static_count)		for(int index=0;index<static_count;++index) func(output,i1,i2,i3,data,index)
 #define LOOP3OUT2(func,output,output2,i1,i2,i3,data,static_count)		for(int index=0;index<static_count;++index) func(output,output2,i1,i2,i3,data,index)
+#define LOOP3OUT2S(func,output,output2,i1,i2,i3,tx,data,static_count)		for(int index=0;index<static_count;++index) func(output,output2,i1,i2,i3,data,index)
 #define LOOP4(func,output,i1,i2,i3,i4,data,static_count)	for(int index=0;index<static_count;++index) func(output,i1,i2,i3,i4,data,index)
 #define LOOP5(func,output,i1,i2,i3,i4,i5,data,static_count)	for(int index=0;index<static_count;++index) func(output,i1,i2,i3,i4,i5,data,index)
 #endif
@@ -181,6 +183,13 @@ void func(inout out_type output, inout out_type_2 output2, const in s_common_sha
 {																			\
 	BOOST_JOIN(func,_initializer)(output, output2, common,i1,i2,i3);		\
 	LOOP3OUT2(BOOST_JOIN(func,_inner_loop),output,output2,common,i1,i2,i3,count);		\
+}
+
+#define MAKE_ACCUMULATING_LOOP_3_2OUTS(out_type, out_type_2, func, it1, it2, it3, tx, count)		\
+void func(inout out_type output, inout out_type_2 output2, const in s_common_shader_data common, const in it1 i1, const in it2 i2, const in it3 i3, const in tx tx)\
+{																			\
+	BOOST_JOIN(func,_initializer)(output, output2, common,i1,i2,i3,tx);		\
+	LOOP3OUT2S(BOOST_JOIN(func,_inner_loop),output,output2,common,i1,i2,i3,tx,count);		\
 }
 
 //

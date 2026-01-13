@@ -31,7 +31,7 @@ DECLARE_SAMPLER(normal_map, "Normal Map", "Normal Map", "shaders/default_bitmaps
 DECLARE_SAMPLER( combo_map, "Combo Map (AO, Rough, Metallic, Height)", "Combo Map", "shaders/default_bitmaps/bitmaps/color_white.tif");
 #include "next_texture.fxh"
 
-#if (defined(COVENANT) || defined(CLEARCOAT) || defined(SELFILLUM))
+#if (defined(IRIDESCENT) || defined(CLEARCOAT) || defined(SELFILLUM))
 	DECLARE_SAMPLER( combo_map_2, "Combo Map (CC Rough, CC Mask, Cov Mask, Illum)", "Combo Map 2", "shaders/default_bitmaps/bitmaps/color_white.tif");
 	#include "next_texture.fxh"
 #endif
@@ -108,21 +108,11 @@ DECLARE_FLOAT_WITH_DEFAULT(reflection_intensity, "Reflection Intensity", "", 0, 
 DECLARE_FLOAT_WITH_DEFAULT(spec_coeff, "Specular Coefficient", "", 0.0, 0.07, float(0.04));
 #include "used_float.fxh"
 
-#if defined(COVENANT)
-	DECLARE_RGB_COLOR_WITH_DEFAULT(front_color,	"Front Color Tint", "", float3(0.0,0.14,1.0));
+#ifdef IRIDESCENT
+    DECLARE_RGB_COLOR_WITH_DEFAULT(specular_colour,	"Covenant Colour Tint", "", float3(1.0,1.0,1.0));
     #include "used_float3.fxh"
-    DECLARE_FLOAT_WITH_DEFAULT(front_power, "Front Offset", "", 0, 1, float(0.3));
-    #include "used_float.fxh"
-
-    DECLARE_RGB_COLOR_WITH_DEFAULT(middle_color, "Middle Color Tint", "", float3(0.98,0.05, 0.2));
+    DECLARE_RGB_COLOR_WITH_DEFAULT(fresnel_colour,	"Fresnel Colour", "", float3(1.0,1.0,1.0));
     #include "used_float3.fxh"
-    DECLARE_FLOAT_WITH_DEFAULT(middle_power, "Middle Offset", "", 0, 1, float(0.7));
-    #include "used_float.fxh"
-
-    DECLARE_RGB_COLOR_WITH_DEFAULT(rim_color,	"Rim Color Tint", "", float3(1.0,1.0,1.0));
-    #include "used_float3.fxh"
-    DECLARE_FLOAT_WITH_DEFAULT(rim_power,	"Rim Offset", "", 0, 1, float(1.0));
-    #include "used_float.fxh"
 
 	#if defined(NORMAL_NOISE)
 		DECLARE_SAMPLER( normal_noise_map, "Normal Noise Map", "Normal Noise Map", "shaders/default_bitmaps/bitmaps/default_normal.tif");
@@ -142,12 +132,18 @@ DECLARE_FLOAT_WITH_DEFAULT(spec_coeff, "Specular Coefficient", "", 0.0, 0.07, fl
 	#endif
 #endif
 
+DECLARE_FLOAT_WITH_DEFAULT(alpha_scale, "Alpha Scale", "", 0, 1, float(1.0));
+#include "used_float.fxh"
+
 struct s_shader_data {
 	s_common_shader_data common;
 	float4 albedo;
 	float4 combo;
-#if (defined(COVENANT) || defined(CLEARCOAT) || defined(SELFILLUM))
+#if (defined(IRIDESCENT) || defined(CLEARCOAT) || defined(SELFILLUM))
 	float4 combo_2;
+#endif
+#ifdef IRIDESCENT
+	float3 f82;
 #endif
 #ifdef CLEARCOAT
 	float3 clearcoat_normal;
@@ -210,7 +206,7 @@ void pixel_pre_lighting(
 
 		float2 combo_map_uv	= transform_texcoord(uv, combo_map_transform);
 		shader_data.combo 	= sample2D(combo_map, combo_map_uv);
-#if (defined(COVENANT) || defined(CLEARCOAT) || defined(SELFILLUM))
+#if (defined(IRIDESCENT) || defined(CLEARCOAT) || defined(SELFILLUM))
 		float2 combo_map_uv_2 = transform_texcoord(uv, combo_map_2_transform);
 		shader_data.combo_2 = sample2D(combo_map_2, combo_map_uv_2);
 #endif
@@ -255,25 +251,15 @@ void pixel_pre_lighting(
 			shader_data.common.albedo.rgb = lerp(shader_data.common.albedo.rgb, shader_data.common.albedo.rgb * surface_color, saturate(control_map.r + control_map.g + control_map.b));
 #endif
 
-#ifdef COVENANT
+#ifdef IRIDESCENT
 		{
 			float cov_mask = shader_data.combo_2.z;
+			shader_data.common.albedo.rgb *= lerp(1, specular_colour, cov_mask);
+			
 	#ifdef NORMAL_NOISE
 			shader_data.common.normal = lerp(shader_data.common.normal, normal_chameleon, cov_mask);
 	#endif
-			float3 ch_colour[3] = 
-			{
-				front_color,
-				middle_color,
-				rim_color,
-			};
-			float offsets_div[3] =
-			{
-				front_power,
-				middle_power,
-				rim_power,
-			};
-			shader_data.common.albedo.rgb = lerp(shader_data.common.albedo.rgb, shader_data.common.albedo.rgb * calcChameleon(shader_data.common.normal, -shader_data.common.view_dir_distance.xyz, offsets_div, ch_colour), cov_mask);
+			shader_data.f82 = fresnel_colour;
 		}
 #endif
 		
@@ -339,7 +325,7 @@ float4 pixel_lighting(
 	//A = Height
 	float4 combo 	= shader_data.combo;
 
-#if (defined(COVENANT) || defined(CLEARCOAT) || defined(SELFILLUM))
+#if (defined(IRIDESCENT) || defined(CLEARCOAT) || defined(SELFILLUM))
 	// Sample second combo map
 	//R = CC Roughness
 	//G = CC Mask
@@ -352,6 +338,10 @@ float4 pixel_lighting(
 #endif
 
 	float3 specular_color = lerp(clamp(spec_coeff, 0.0, 0.07), albedo.rgb, combo.b);	//get f0 from albedo with metalness mask.
+
+#ifdef IRIDESCENT
+	float3 f82 = shader_data.f82;
+#endif
 
 #ifdef CLEARCOAT //adjust f0 to account for clearcoat
 	specular_color = lerp(specular_color, pow(1 - 5 * sqrt(specular_color), 2) / pow(5 - sqrt(specular_color), 2), combo_2.y);
@@ -366,7 +356,7 @@ float4 pixel_lighting(
 
 	float4 material_parameters = float4(
 		combo.y,
-#if (defined(COVENANT) || defined(CLEARCOAT) || defined(SELFILLUM))
+#if (defined(IRIDESCENT) || defined(CLEARCOAT) || defined(SELFILLUM))
 		combo_2.x,
 		combo_2.y,
 #else
@@ -389,33 +379,44 @@ float4 pixel_lighting(
 			(float3)0.0,
 #endif
 			specular_color,
+#ifdef IRIDESCENT
+			float4(f82, combo_2.z),
+#else
+			(float4)0.0f,
+#endif
 			material_parameters
 			);
 
 	// sample reflection
 	float3 view = shader_data.common.view_dir_distance.xyz;
-		 
+	float cosTheta = saturate(dot(normal, -view));
 	float3 rVec = reflect(view, normal);
 	rVec.y *= -1;
-	float mip_index = (pow((combo.g - 1.0), 3.0) + 1.0) * 8.0;//max(base_lod, specular_reflectance_and_roughness.w * env_roughness_scale * 9);
+	float mip_index = pow(combo.g, 0.4545454545f) * 8;//(pow((combo.g - 1.0), 3.0) + 1.0) * 8.0;//max(base_lod, specular_reflectance_and_roughness.w * env_roughness_scale * 9);
 	//float mip_index = pow(rough, 1 / 2.2) * 8.0f;
 	float4 reflectionMap = sampleCUBELOD(reflection_map, rVec, mip_index);
 	float gloss = 1.0 - combo.g;
-	float3 fresnel = FresnelSchlickWithRoughness(specular_color, -view, normal, gloss);
+	float3 fresnel = fresnel_schlick_roughness(specular_color, cosTheta, gloss);
+#ifdef IRIDESCENT
+	fresnel = lerp(fresnel, saturate(fresnel - fresnel_lasagne(specular_color, f82, cosTheta)), combo_2.z);
+#endif
 
-	float3 reflection = reflectionMap.a * reflectionMap.rgb * EnvBRDFApprox(fresnel, combo.g, max(dot(normal, -view), 0.0)) * reflection_dif;
+	float3 reflection = reflectionMap.a * reflectionMap.rgb * EnvBRDFApprox(fresnel, combo.g, max(dot(normal, -view), cosTheta)) * reflection_dif;
 
 #ifdef CLEARCOAT
-	float3 fresnelCC = FresnelSchlickWithRoughness((float4)0.04f, -view, normal, (1 - combo_2.x));
-	float3 reflectionCC = reflectionMap.a * reflectionMap.rgb * EnvBRDFApprox(fresnelCC, combo.w, max(dot(normal, -view), 0.0)) * reflection_dif;
+	float cosThetaCC = saturate(dot(cc_normal, -view));
+	float glossCC = (1 - combo_2.x);
+	float3 fresnelCC = EnvBRDFApprox(fresnel_schlick_roughness((float4)0.04f, glossCC, cosThetaCC), combo_2.x, cosTheta);
+	float4 reflectionMapCC = sampleCUBELOD(reflection_map, rVec, pow(combo_2.x, 0.4545454545f) * 8);
+	float3 reflectionCC = reflectionMapCC.a * reflectionMapCC.rgb * EnvBRDFApprox(fresnelCC, combo.w, max(dot(cc_normal, -view), 0.0)) * reflection_dif * combo_2.y;
 
-	reflection *= (1 - fresnelCC);
+	reflection *= (1 - fresnelCC) * combo_2.y;
 	reflection += reflectionCC;
 #endif
 
 	//.. Finalize Output Color
     float4 out_color;
-	out_color.a   = albedo.a;
+	out_color.a   = albedo.a * alpha_scale;
 	 
 	out_color.rgb = brdf + reflection;
 

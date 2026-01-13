@@ -294,10 +294,11 @@ float4 pixel_lighting(
 	float mip_index = (pow((combo.g - 1.0), 3.0) + 1.0) * 8.0;//max(base_lod, specular_reflectance_and_roughness.w * env_roughness_scale * 9);
 	//float mip_index = pow(rough, 1 / 2.2) * 8.0f;
 	float4 reflectionMap = sampleCUBELOD(reflection_map, rVec, mip_index);
+	float cosTheta = saturate(dot(normal, -view));
 	float gloss = 1.0 - combo.g;
-	fresnel = FresnelSchlickWithRoughness(specular_color, -view, normal, gloss);
+	fresnel = fresnel_schlick_roughness(specular_color, cosTheta, gloss);
 
-	float3 reflection = reflectionMap.a * reflectionMap.rgb * EnvBRDFApprox(fresnel, combo.g, max(dot(normal, -view), 0.0)) * reflection_dif;
+	float3 reflection = reflectionMap.a * reflectionMap.rgb * EnvBRDFApprox(fresnel, combo.g, cosTheta) * reflection_dif;
 
 	//.. Finalize Output Color
     float4 out_color;

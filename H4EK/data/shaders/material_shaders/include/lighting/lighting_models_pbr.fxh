@@ -24,15 +24,6 @@ void orthonormal_basis(in float3 normal, out float3 T, out float3 B)
     //return( float3x3(u,v,n) );
 }
 
-float3 FresnelSchlick(float3 SpecularColor, float3 E,float3 H)
-{
-	return SpecularColor + (1.0 - SpecularColor) * pow(1.0 - clamp(dot(E, H), 0.0001, 1), 5.0);
-}
-float3 FresnelSchlickWithRoughness(float3 SpecularColor, float3 E, float3 N, float Gloss)
-{
-    return SpecularColor + (max(Gloss, SpecularColor) - SpecularColor) * pow(1 - saturate(dot(E, N)), 5);
-}
-
 float3 calc_hammon(
     in float3 normal_dir,
     in float3 view_dir,
@@ -51,99 +42,104 @@ float3 calc_hammon(
 
     float facing = 0.5 + 0.5 * LdotV;
 	float rough = facing * (0.9 - 0.4 * facing) * ((0.5 + NdotH) / max(NdotH, _epsilon));
-	float smooth = 1.05 * 0.96 * (1 - pow(1 - NdotL, 5)) * (1 - pow(1 - NdotV, 5));
-	float single = (1 / pi) * lerp(smooth, rough, a);
+	float smooth = 1.05 * (1 - pow(1 - NdotL, 5)) * (1 - pow(1 - NdotV, 5));
+	float single = lerp(smooth, rough, a) / pi;
 	float multi = 0.1159 * a;
     return albedo * saturate((single + albedo * multi)) * light_irradiance * NdotL;
 }
 
-float3 calc_ggx(
-    in float3 normal_dir,
-    in float3 view_dir,
-    in float3 light_dir,
-    in float3 light_irradiance,
+float3 fresnel_schlick(
     in float3 f0,
-    in float a,
-    inout float3 F
+    in float cosTheta
     )
 {
-    float3 H    = normalize(light_dir + view_dir);
-    float NdotL = clamp(dot(normal_dir, light_dir), 0.0001, 1.0);
-	float NdotV = clamp(dot(normal_dir, view_dir), 0.0001, 1.0);
-    float LdotH = clamp(dot(light_dir, H), 0.0001, 1.0);
-	float VdotH = clamp(dot(view_dir, H), 0.0001, 1.0);
-    float NdotH = clamp(dot(normal_dir, H), 0.0001, 1.0);
-
-    float a2_sqrd = pow(a, 4);
-    F = f0 + (1 - f0) * pow(1.0f - VdotH, 5);
-
-    float NDFdenom = max((NdotH * a2_sqrd - NdotH) * NdotH + 1.0, 0.0001);
-    float NDF = a2_sqrd / (pi * NDFdenom * NDFdenom);
-
-    float L = 2.0 * NdotL / (NdotL + sqrt(a2_sqrd + (1.0 - a2_sqrd) * (NdotL * NdotL)));
-	float V = 2.0 * NdotV / (NdotV + sqrt(a2_sqrd + (1.0 - a2_sqrd) * (NdotV * NdotV)));
-    float G = L * V;
-    
-    float3 numerator =  NDF * 
-                        G * 
-                        F;
-    float3 denominator  = max(4.0 * NdotV * NdotL, 0.0001);
-
-    return (numerator / denominator) * light_irradiance * NdotL;
+    return f0 + (1 - f0) * pow(1 - cosTheta, 5);
+}
+float3 fresnel_schlick_roughness(
+    in float3 f0,
+    in float cosTheta,
+    in float gloss
+    )
+{
+    return f0 + (max(gloss, f0) - f0) * pow(1 - cosTheta, 5);
+}
+float3 fresnel_lasagne(
+    in float3 f0,
+    in float3 f82,
+    in float cosTheta
+    )
+{
+    float3 a_lazanyi = 17.6513846 * (f0 - f82) + 8.16666667 * (1 - f0);
+    return a_lazanyi * cosTheta * pow(1 - cosTheta, 6);
 }
 
-float3 calc_ggx_aniso(
-    in float3 normal_dir,
+float ndf_aniso_ggx(
+    in float NdotH,
     in float3 view_dir,
-    in float3 light_dir,
-    in float3 light_irradiance,
-    in float3 f0,
+    in float3 H,
     in float3 tangent,
     in float3 binormal,
-    in float a,
     in float at,
-    in float ab,
-    inout float3 F
+    in float ab
     )
 {
-    float3 H    = normalize(light_dir + view_dir);
-    float NdotL = clamp(dot(normal_dir, light_dir), 0.0001, 1.0);
-	float NdotV = clamp(dot(normal_dir, view_dir), 0.0001, 1.0);
-    float LdotH = clamp(dot(light_dir, H), 0.0001, 1.0);
-	float VdotH = clamp(dot(view_dir, H), 0.0001, 1.0);
-    float NdotH = clamp(dot(normal_dir, H), 0.0001, 1.0);
-
-    float a2_sqrd = pow(a, 4);
-    F = f0 + (1 - f0) * pow(1.0f - VdotH, 5);
-
     float TdotH = dot(tangent, H);
     float BdotH = dot(binormal, H);
-    float TdotV = dot(tangent, view_dir);
-    float BdotV = dot(tangent, view_dir);
-    float TdotL = dot(tangent, view_dir);
-    float BdotL = dot(tangent, view_dir);
 
     float a2 = at * ab;
     float3 v = float3(ab * TdotH, at * BdotH, a2 * NdotH);
     float v2 = saturate(dot(v, v));
     float w2 = a2 / v2;
-    float NDF_aniso = a2 * w2 * w2 * (1.0 / pi);
+    return a2 * w2 * w2 * (1.0 / pi);
 
-    /*float L = 2.0 * NdotL / (NdotL + sqrt(a2_sqrd + (1.0 - a2_sqrd) * (NdotL * NdotL)));
-	float V = 2.0 * NdotV / (NdotV + sqrt(a2_sqrd + (1.0 - a2_sqrd) * (NdotV * NdotV)));
-    float G = L * V;*/
+    //return (numerator / denominator) * light_irradiance * NdotL;
+}
+float g_smith(
+    in float NdotL,
+    in float NdotV,
+    in float a
+    )
+{
+    float a2 = a * a;
+    /*float g_1 = 2.0f * NdotV 
+                / 
+                (sqrt(a2 + (1 - a2) * (NdotV * NdotV)) + NdotV);*/
+
+    float g_2 = 2 * NdotL * NdotV
+                /
+                max(NdotV * sqrt(a2 + (1 - a2) * (NdotL * NdotL)) + NdotL * sqrt(a2 + (1 - a2) * (NdotV * NdotV)), _epsilon);
+    return g_2;
+}
+
+float G_aniso(
+    in float NdotH,
+    in float NdotL,
+    in float NdotV,
+    in float3 view_dir,
+    in float3 light_dir,
+    in float3 tangent,
+    in float3 binormal,
+    in float at,
+    in float ab
+    )
+{
+    float TdotV = dot(tangent, view_dir);
+    float BdotV = dot(binormal, view_dir);
+    float TdotL = dot(tangent, light_dir);
+    float BdotL = dot(binormal, light_dir);
 
     float lambdaV = NdotL * length(float3(at * TdotV, ab * BdotV, NdotV));
     float lambdaL = NdotV * length(float3(at * TdotL, ab * BdotL, NdotL));
-    float G = clamp(0.5f / (lambdaV + lambdaL), 0.0f, 1.0f);
-    
-    
-    float3 numerator    = NDF_aniso * 
-                          G * 
-                          F;
-    //float3 denominator  = max(4.0 * NdotV * NdotL, 0.0001);
+    return clamp(1.0f / (2.0 * (lambdaV + lambdaL)), 0.0f, 1.0f);
+}
 
-    return (numerator /* denominator*/) * light_irradiance * NdotL;
+float ndf_ggx(
+    in float NdotH,
+    in float a2)
+{
+    float a2_squared = a2 * a2;
+    float NDF_denom = max(NdotH * NdotH * (a2_squared - 1.0) + 1.0, _epsilon);
+	return a2_squared / (pi * NDF_denom * NDF_denom);
 }
 
 void VMFDiffusePBR(
@@ -201,84 +197,140 @@ void calc_pbr_initializer(
     const in s_common_shader_data common,
     const in float3 normal,
     const in float3 f0,
+    const in float4 f82,
     const in float4 material_parameters)
 {
-
     //SH = 0.0f;
     float ao = brdf;
     brdf = 0.0f;
 
 #if (defined(xenon) || (DX_VERSION == 11)) && !defined(DISABLE_VMF)
-	float3 viewDir = common.view_dir_distance.xyz;
-	float3 albedo = common.albedo.xyz;
-    float rough = material_parameters.x;
-    #ifdef CLEARCOAT
-        float ccRough = material_parameters.y;
-        float ccMask = material_parameters.z;
-    #endif
-    #ifdef ANISO
-        float aniso = material_parameters.w;
-        float3 T, B;
-        orthonormal_basis(normal, T, B);
+    float2 a2 = float2(material_parameters.x, 1 - ((1 - material_parameters.x) / 2));
+    a2 *= a2;
 
-        float aniso_rough_t = max(rough * rough * (1 - aniso), _epsilon);
-        float aniso_rough_b = max(rough * rough * (1 + aniso), _epsilon);
-    #endif
-	//if (common.lighting_mode != LM_PER_PIXEL_FLOATING_SHADOW_SIMPLE && common.lighting_mode != LM_PER_PIXEL_SIMPLE)
-	{
-    #if defined(xenon) || (DX_VERSION == 11)
-            const float directLightingMinimumForShadows = ps_bsp_lightmap_scale_constants.y;
-    #else
-		    const float directLightingMinimumForShadows = 0.3f;
-	#endif
+    float3 view = normalize(common.view_dir_distance.xyz);
+	float3 L[2] =   {
+                    normalize(VMFGetVector(common.lighting_data.vmf_data, 0)),
+					normalize(VMFGetVector(common.lighting_data.vmf_data, 1))
+                    };
+	float3 H[2] =   {
+			        normalize(VMFGetVector(common.lighting_data.vmf_data, 0) - view),
+			        normalize(VMFGetVector(common.lighting_data.vmf_data, 1) - view)
+                    };
+    float2 NdotH = float2(
+			max(dot(H[0], common.normal), _epsilon),
+			max(dot(H[1], common.normal), _epsilon));
+    float NdotV = saturate(dot(-view, common.normal));
+    float2 NdotL = float2(
+            max(dot(L[0], common.normal), _epsilon),
+            max(dot(L[1], common.normal), _epsilon));
+    float2 VdotH = float2(
+			max(dot(-view, H[0]), _epsilon),
+			max(dot(-view, H[1]), _epsilon));
 
-		float3 viewDir = common.view_dir_distance.xyz;
-
-		float3 fresnel0 = 0;
-		float3 fresnel1 = 0;
-    #ifdef ANISO
-        float3 spec[2] =    
-            {
-                calc_ggx_aniso(common.normal, -common.view_dir_distance.xyz, VMFGetVector(common.lighting_data.vmf_data, 0), common.lighting_data.vmf_data.coefficients[1].xyz, f0.xyz, T, B, rough, aniso_rough_t, aniso_rough_b, fresnel0),
-                calc_ggx_aniso(common.normal, -common.view_dir_distance.xyz, VMFGetVector(common.lighting_data.vmf_data, 1), common.lighting_data.vmf_data.coefficients[3].xyz, f0.xyz, T, B, rough, aniso_rough_t, aniso_rough_b, fresnel1)
-            };
-    #else
-        float3 spec[2] =
-            {
-                spec[0] = calc_ggx(common.normal, -common.view_dir_distance.xyz, VMFGetVector(common.lighting_data.vmf_data, 0), common.lighting_data.vmf_data.coefficients[1].xyz, f0.xyz, rough, fresnel0),
-                spec[1] = calc_ggx(common.normal, -common.view_dir_distance.xyz, VMFGetVector(common.lighting_data.vmf_data, 1), common.lighting_data.vmf_data.coefficients[3].xyz, f0.xyz, rough, fresnel1)
-            };
-    #endif
-        float3 vmfDif0 = 0;
-        float3 vmfDif1 = 0;
-
-        VMFDiffusePBR(common.lighting_data.vmf_data, normal, common.geometricNormal, -common.view_dir_distance.xyz, albedo, rough, fresnel0, fresnel1, common.lighting_data.shadow_mask.g, common.lighting_data.savedAnalyticScalar, common.lighting_mode, vmfDif0, vmfDif1);
-
-    #ifdef CLEARCOAT
-            float3 ccFr0 = 0;
-            float3 ccFr1 = 0;
-            float3 ccSpec[2] =
-            {
-                calc_ggx(normal, -common.view_dir_distance.xyz, VMFGetVector(common.lighting_data.vmf_data, 0), common.lighting_data.vmf_data.coefficients[1].xyz, (float3)0.04f, ccRough, ccFr0) * ccMask,
-                calc_ggx(normal, -common.view_dir_distance.xyz, VMFGetVector(common.lighting_data.vmf_data, 1), common.lighting_data.vmf_data.coefficients[3].xyz, (float3)0.04f, ccRough, ccFr1) * ccMask
-            };
-            vmfDif0 *= (1 - (ccFr0  * ccMask));
-            vmfDif1 *= (1 - (ccFr1 * ccMask));
-            spec[0] *= pow(1 - (ccFr0 * ccMask), 2);
-            spec[1] *= pow(1 - (ccFr1 * ccMask), 2);
+    float3 F[2] = 
+    {
+        fresnel_schlick(f0, VdotH.x),
+        fresnel_schlick(f0, VdotH.y)
+    };
+#ifdef IRIDESCENT
+    F[0] = lerp(F[0], saturate(F[0] - fresnel_lasagne(f0, f82.rgb, VdotH.x)), f82.w);
+    F[1] = lerp(F[1], saturate(F[0] - fresnel_lasagne(f0, f82.rgb, VdotH.y)), f82.w);
 #endif
-        float3 diffuse = vmfDif0 + vmfDif1;
-        
-        brdf += (spec[0] + spec[1]
+
+#ifdef ANISO
+    float aniso = material_parameters.w;
+    float3 T, B;
+    orthonormal_basis(common.normal, T, B);
+
+    float2 aniso_rough_t = max(a2 * (1 - aniso), _epsilon);
+    float2 aniso_rough_b = max(a2 * (1 + aniso), _epsilon);
+    float2 NDF = float2(
+                    ndf_aniso_ggx(NdotH.x, -view, H[0], T, B, aniso_rough_t.x, aniso_rough_b.x),
+                    ndf_aniso_ggx(NdotH.y, -view, H[1], T, B, aniso_rough_t.y, aniso_rough_b.y));
+
+    float2 aniso_g = float2(
+                        G_aniso(NdotH.x, NdotL.x, NdotV, -view, L[0], T, B, aniso_rough_t.x, aniso_rough_b.x),
+                        G_aniso(NdotH.y, NdotL.y, NdotV, -view, L[1], T, B, aniso_rough_t.x, aniso_rough_b.x));
+    //float2 hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, a2.xx);
+    float3 spec[2] = 
+    {
+        (F[0] * NDF.x * aniso_g.x) * NdotL.x * common.lighting_data.vmf_data.coefficients[1].xyz,
+        (F[1] * NDF.y * aniso_g.y) * NdotL.y * common.lighting_data.vmf_data.coefficients[3].xyz
+    }; 
+    
+#else
+    float2 NDF = float2(
+                        ndf_ggx(NdotH.x, a2.x),
+                        ndf_ggx(NdotH.y, a2.y));
+
+    float2 hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, a2.xx );
+
+    float2 G = float2(
+                    g_smith(NdotL.x, NdotV, a2.x),
+                    g_smith(NdotL.y, NdotV, a2.x));
+    float3 spec[2] = 
+    {
+        (F[0] * NDF.x / hammon_visibility.x) * NdotL.x * common.lighting_data.vmf_data.coefficients[1].xyz,
+        (F[1] * NDF.y / hammon_visibility.y) * NdotL.y * common.lighting_data.vmf_data.coefficients[3].xyz
+    }; 
+#endif
+
+    float3 albedo = common.albedo.xyz;
 #ifdef CLEARCOAT
-                + ccSpec[0] + ccSpec[1]
+    float ccRough = material_parameters.y;
+    float ccMask = material_parameters.z;
 #endif
-                +
-                (diffuse * (1 - common.shaderValues.y))) * ao;
-	}
+
+    float3 vmfDif0 = 0;
+    float3 vmfDif1 = 0;
+
+    VMFDiffusePBR(common.lighting_data.vmf_data, normal, common.geometricNormal, -common.view_dir_distance.xyz, albedo, 0.0, F[0], F[1], common.lighting_data.shadow_mask.g, common.lighting_data.savedAnalyticScalar, common.lighting_mode, vmfDif0, vmfDif1);
+
+#ifdef CLEARCOAT
+    float2 ccNdotH = float2(
+			max(dot(H[0], normal), _epsilon),
+			max(dot(H[1], normal), _epsilon));
+    float ccNdotV = max(dot(-view, normal), _epsilon);
+    float2 ccNdotL = float2(
+            max(dot(L[0], normal), _epsilon),
+            max(dot(L[1], normal), _epsilon));
+
+    float2 cca2 = float2(ccRough, 1 - ((1 - ccRough) / 2));
+    cca2 *= cca2;
+    float3 ccF[2] = 
+    {
+        fresnel_schlick(0.04f, VdotH.x),
+        fresnel_schlick(0.04f, VdotH.y)
+    };
+    float2 ccNDF = float2(
+                    ndf_ggx(ccNdotH.x, cca2.x),
+                    ndf_ggx(ccNdotH.x, cca2.y));
+
+    float2 cc_hammon_visibility = 2 * lerp(2 * ccNdotL * ccNdotV, ccNdotL + ccNdotV, cca2.xx);
+
+    float3 ccSpec[2] =
+    {
+        (ccF[0] * ccNDF.x / cc_hammon_visibility.x) * ccNdotL.x * common.lighting_data.vmf_data.coefficients[1].xyz * ccMask,
+        (ccF[1] * ccNDF.y / cc_hammon_visibility.y) * ccNdotL.y * common.lighting_data.vmf_data.coefficients[3].xyz * ccMask
+    };
+    vmfDif0 *= (1 - (ccF[0]  * ccMask));
+    vmfDif1 *= (1 - (ccF[1] * ccMask));
+    spec[0] *= pow(1 - (ccF[0] * ccMask), 2);
+    spec[1] *= pow(1 - (ccF[1] * ccMask), 2);
+#endif
+    
+    float3 diffuse = vmfDif0 + vmfDif1;
+        
+    brdf += (spec[0] + spec[1]
+#ifdef CLEARCOAT
+        + ccSpec[0] + ccSpec[1]
+#endif
+        +
+        (diffuse * (1 - common.shaderValues.y))) * ao;
 
     SH = CompSH(common, 0.0, common.normal);
-    float3 fresnelNV = f0 + (1 - f0) * pow(1 - saturate(dot(normal, -viewDir)), 5);     
+    float3 fresnelNV = f0 + (1 - f0) * pow(1 - saturate(dot(normal, -view)), 5);     
     brdf += albedo * (1 - common.shaderValues.y) * (1 / pi) * SH * ao;
     SH += VMFDiffuse(common.lighting_data.vmf_data, common.normal, common.geometricNormal, common.lighting_data.shadow_mask.g, common.lighting_data.savedAnalyticScalar, common.lighting_mode) * ao;
 #endif
@@ -290,49 +342,105 @@ void calc_pbr_inner_loop(
     const in s_common_shader_data common,
     const in float3 normal,
     const in float3 f0,
+    const in float4 f82,
     const in float4 material_parameters,
     int index)
 {
     float4 direction= common.lighting_data.light_direction_specular_scalar[index];
     float4 intensity_diffuse_scalar = common.lighting_data.light_intensity_diffuse_scalar[index];
 
-    float3 viewDir = common.view_dir_distance.xyz;
-    float3 albedo = common.albedo.rgb;
-    float rough = material_parameters.x;
-    #ifdef CLEARCOAT
-        float ccRough = material_parameters.y;
-        float ccMask = material_parameters.z;
-    #endif
-    #ifdef ANISO
-        float aniso = material_parameters.w;
-        float3 T, B;
-        orthonormal_basis(common.normal, T, B);
-        float aniso_rough_t = max(rough * rough * (1 - 0.3), _epsilon);
-        float aniso_rough_b = max(rough * rough * (1 + 0.3), _epsilon);
-    #endif
+    float3 albedo = common.albedo.xyz;
+    float a2 = material_parameters.x * material_parameters.x;
+    float3 view = normalize(common.view_dir_distance.xyz);
+	float3 H = normalize(direction.xyz - view);
+    float NdotH = max(dot(H, common.normal), _epsilon);
+    float NdotV = max(dot(-view, common.normal), _epsilon);
+    float NdotL = max(dot(direction.xyz, common.normal), _epsilon);
+    float VdotH = max(dot(-view, H), _epsilon);
+#ifdef CLEARCOAT
+    float cca2 = material_parameters.y * material_parameters.y;
+    float ccMask = material_parameters.z;
+#endif
+#ifdef ANISO
+    float aniso = material_parameters.w;
+    float3 T, B;
+    orthonormal_basis(common.normal, T, B);
+    float aniso_rough_t = max(a2 * (1 - aniso), _epsilon);
+    float aniso_rough_b = max(a2 * (1 + aniso), _epsilon);
+#endif
 
-	float3 fresnel = 0;
+    float3 F = fresnel_schlick(f0, VdotH);
+
+#ifdef IRIDESCENT
+    F = lerp(F, saturate(F - fresnel_lasagne(f0, f82.rgb, VdotH)), f82.w);
+#endif
 
 #ifdef ANISO
-    float3 spec = calc_ggx_aniso(common.normal, -viewDir, direction.xyz, intensity_diffuse_scalar.xyz * direction.w, f0.xyz, T, B, rough, aniso_rough_t, aniso_rough_b, fresnel);
+    float NDF = ndf_aniso_ggx(NdotH, -view, H, T, B, aniso_rough_t, aniso_rough_b);
+    float aniso_G = G_aniso(NdotH, NdotL, NdotV, -view, direction.xyz, T, B, aniso_rough_t, aniso_rough_b);
+
+    //float hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, a2);
+    float3 spec = (F * NDF * aniso_G) * NdotL * intensity_diffuse_scalar.xyz * direction.w;
 #else
-	float3 spec = calc_ggx(common.normal, -viewDir, direction.xyz, intensity_diffuse_scalar.xyz * direction.w, f0.xyz, rough, fresnel);
+    float NDF = ndf_ggx(NdotH, a2);
+
+    float hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, a2  * a2);
+
+    float3 spec = (F * NDF / hammon_visibility) * NdotL * intensity_diffuse_scalar.xyz * direction.w;
 #endif
-    float3 diffuse = calc_hammon(common.normal, -viewDir, direction.xyz, intensity_diffuse_scalar.xyz * direction.w, albedo, rough);
+    float3 diffuse = calc_hammon(common.normal, -view, direction.xyz, intensity_diffuse_scalar.xyz * direction.w, albedo, material_parameters.x);
 #ifdef CLEARCOAT
-    float3 ccFr = 0;
-    float3 ccSpec = calc_ggx(normal, -viewDir, direction.xyz, intensity_diffuse_scalar.xyz * direction.w, (float3)0.04f, ccRough, ccFr) * ccMask;
-    diffuse *= (1 - (ccFr * ccMask));
-    spec *= pow(1 - (ccFr * ccMask), 2);
+    float3 ccF = fresnel_schlick(0.04f, VdotH);
+    float ccNdotH = max(dot(H, normal), _epsilon);
+    float ccNdotV = max(dot(-view, normal), _epsilon);
+    float ccNdotL = max(dot(direction.xyz, normal), _epsilon);
+
+    float ccNDF = ndf_ggx(ccNdotH, cca2);
+    float cc_hammon_visibility = 2 * lerp(2 * ccNdotL * ccNdotV, ccNdotL + ccNdotV, cca2);
+    float3 ccSpec = (ccF * ccNDF / cc_hammon_visibility) * ccNdotL * intensity_diffuse_scalar.xyz * direction.w * ccMask;
+    
+    diffuse *= (1 - (ccF * ccMask));
+    spec *= pow(1 - (ccF * ccMask), 2);
     brdf += diffuse * (1 - common.shaderValues.y) + spec + ccSpec;
 #else
     brdf += diffuse * (1 - common.shaderValues.y) + spec;
 #endif
+    SH += NdotL * intensity_diffuse_scalar.rgb * intensity_diffuse_scalar.a;
 }
 
-    MAKE_ACCUMULATING_LOOP_3_2OUT(float3, float3, calc_pbr, float3, float3, float4, MAX_LIGHTING_COMPONENTS);
+    MAKE_ACCUMULATING_LOOP_3_2OUTS(float3, float3, calc_pbr, float3, float3, float4, float4, MAX_LIGHTING_COMPONENTS);
 
 #ifdef SKIN_BRDF
+//adding calc_ggx back here so I can avoid changing VMFSkinPBR and srf_skin.fx to handle the BRDF in those place because I'm lazy :)
+//Should do that later anyway for optimization.
+float3 calc_ggx(
+    in float3 normal_dir,
+    in float3 view_dir,
+    in float3 light_dir,
+    in float3 light_irradiance,
+    in float3 f0,
+    in float a,
+    inout float3 F
+    )
+{
+    float3 H    = normalize(light_dir + view_dir);
+    float NdotL = clamp(dot(normal_dir, light_dir), 0.0001, 1.0);
+	float NdotV = clamp(dot(normal_dir, view_dir), 0.0001, 1.0);
+    float LdotH = clamp(dot(light_dir, H), 0.0001, 1.0);
+	float VdotH = clamp(dot(view_dir, H), 0.0001, 1.0);
+    float NdotH = clamp(dot(normal_dir, H), 0.0001, 1.0);
+    float a2 = a * a;
+    F = fresnel_schlick(f0, VdotH);
+
+    float NDF = ndf_ggx(NdotH, a2);
+
+    float hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, a2);
+
+    float3 numerator =  NDF * 
+                        F;
+    return (NDF * F / hammon_visibility) * light_irradiance * NdotL;
+}
+
 float3 VMFSkinPBR(
     inout float3 SH,
     const in s_common_shader_data common,
@@ -354,6 +462,8 @@ float3 VMFSkinPBR(
         VMFGetVector(common.lighting_data.vmf_data, 0),
         VMFGetVector(common.lighting_data.vmf_data, 1)
     };
+//calculate specular
+
 
     float3 spec[2] =
     {
@@ -455,6 +565,207 @@ float3 VMFSkinPBR(
 
     return brdf;
 }
+#endif
+
+#ifdef H2A_MATERIAL
+void calc_pbr_h2a_initializer(
+    inout float3 brdf,
+    inout float3 SH,
+    const in s_common_shader_data common,
+    const in float3 f0,
+    const in float3 ccf0,
+    const in float4 material_parameters)
+{
+    //SH = 0.0f;
+    float ao = brdf;
+    brdf = 0.0f;
+
+#if (defined(xenon) || (DX_VERSION == 11)) && !defined(DISABLE_VMF)
+    float2 a2 = float2(material_parameters.x, 1 - ((1 - material_parameters.x) / 2));
+    a2 *= a2;
+
+    float3 view = normalize(common.view_dir_distance.xyz);
+	float3 L[2] =   {
+                    normalize(VMFGetVector(common.lighting_data.vmf_data, 0)),
+					normalize(VMFGetVector(common.lighting_data.vmf_data, 1))
+                    };
+	float3 H[2] =   {
+			        normalize(VMFGetVector(common.lighting_data.vmf_data, 0) - view),
+			        normalize(VMFGetVector(common.lighting_data.vmf_data, 1) - view)
+                    };
+    float2 NdotH = float2(
+			max(dot(H[0], common.normal), _epsilon),
+			max(dot(H[1], common.normal), _epsilon));
+    float NdotV = saturate(dot(-view, common.normal));
+    float2 NdotL = float2(
+            max(dot(L[0], common.normal), _epsilon),
+            max(dot(L[1], common.normal), _epsilon));
+    float2 VdotH = float2(
+			max(dot(-view, H[0]), _epsilon),
+			max(dot(-view, H[1]), _epsilon));
+
+    float3 F[2] = 
+    {
+        fresnel_schlick(f0, VdotH.x),
+        fresnel_schlick(f0, VdotH.y)
+    };
+
+#ifdef ANISO
+    float aniso = material_parameters.w;
+    float3 T, B;
+    orthonormal_basis(common.normal, T, B);
+
+    float2 aniso_rough_t = max(a2 * (1 - aniso), _epsilon);
+    float2 aniso_rough_b = max(a2 * (1 + aniso), _epsilon);
+    float2 NDF = float2(
+                    ndf_aniso_ggx(NdotH.x, -view, H[0], T, B, aniso_rough_t.x, aniso_rough_b.x),
+                    ndf_aniso_ggx(NdotH.y, -view, H[1], T, B, aniso_rough_t.y, aniso_rough_b.y));
+
+    float2 aniso_g = float2(
+                        G_aniso(NdotH.x, NdotL.x, NdotV, -view, L[0], T, B, aniso_rough_t.x, aniso_rough_b.x),
+                        G_aniso(NdotH.y, NdotL.y, NdotV, -view, L[1], T, B, aniso_rough_t.x, aniso_rough_b.x));
+    //float2 hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, a2.xx);
+    float3 spec[2] = 
+    {
+        (F[0] * NDF.x * aniso_g.x) * NdotL.x * common.lighting_data.vmf_data.coefficients[1].xyz,
+        (F[1] * NDF.y * aniso_g.y) * NdotL.y * common.lighting_data.vmf_data.coefficients[3].xyz
+    }; 
+    
+#else
+    float2 NDF = float2(
+                        ndf_ggx(NdotH.x, a2.x),
+                        ndf_ggx(NdotH.y, a2.y));
+
+    float2 hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, a2.xx );
+
+    float2 G = float2(
+                    g_smith(NdotL.x, NdotV, a2.x),
+                    g_smith(NdotL.y, NdotV, a2.x));
+    float3 spec[2] = 
+    {
+        (F[0] * NDF.x / hammon_visibility.x) * NdotL.x * common.lighting_data.vmf_data.coefficients[1].xyz,
+        (F[1] * NDF.y / hammon_visibility.y) * NdotL.y * common.lighting_data.vmf_data.coefficients[3].xyz
+    }; 
+#endif
+
+    float3 albedo = common.albedo.xyz;
+#ifdef CLEARCOAT
+    float ccRough = material_parameters.y;
+    float ccMask = material_parameters.z;
+#endif
+
+    float3 vmfDif0 = 0;
+    float3 vmfDif1 = 0;
+
+    VMFDiffusePBR(common.lighting_data.vmf_data, common.normal, common.geometricNormal, -common.view_dir_distance.xyz, albedo, 0.0, F[0], F[1], common.lighting_data.shadow_mask.g, common.lighting_data.savedAnalyticScalar, common.lighting_mode, vmfDif0, vmfDif1);
+
+#ifdef CLEARCOAT
+    float2 cca2 = float2(ccRough, 1 - ((1 - ccRough) / 2));
+    cca2 *= cca2;
+    float3 ccF[2] = 
+    {
+        fresnel_schlick(ccf0, VdotH.x),
+        fresnel_schlick(ccf0, VdotH.y)
+    };
+    float2 ccNDF = float2(
+                    ndf_ggx(NdotH.x, a2.x),
+                    ndf_ggx(NdotH.x, a2.y));
+
+    float2 cc_hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, cca2.xx);
+
+    float3 ccSpec[2] =
+    {
+        (ccF[0] * ccNDF.x / cc_hammon_visibility.x) * NdotL.x * common.lighting_data.vmf_data.coefficients[1].xyz * ccMask,
+        (ccF[1] * ccNDF.y / cc_hammon_visibility.y) * NdotL.y * common.lighting_data.vmf_data.coefficients[3].xyz * ccMask
+    };
+    vmfDif0 *= (1 - (ccF[0]  * ccMask));
+    vmfDif1 *= (1 - (ccF[1] * ccMask));
+    spec[0] *= pow(1 - (ccF[0] * ccMask), 2);
+    spec[1] *= pow(1 - (ccF[1] * ccMask), 2);
+#endif
+    
+    float3 diffuse = vmfDif0 + vmfDif1;
+        
+    brdf += (spec[0] + spec[1]
+#ifdef CLEARCOAT
+        + ccSpec[0] + ccSpec[1]
+#endif
+        +
+        (diffuse * (1 - common.shaderValues.y))) * ao;
+
+    SH = CompSH(common, 0.0, common.normal);
+    float3 fresnelNV = f0 + (1 - f0) * pow(1 - saturate(dot(common.normal, -view)), 5);
+    brdf += albedo * (1 - common.shaderValues.y) * (1 / pi) * SH * ao;
+    SH += VMFDiffuse(common.lighting_data.vmf_data, common.normal, common.geometricNormal, common.lighting_data.shadow_mask.g, common.lighting_data.savedAnalyticScalar, common.lighting_mode) * ao;
+#endif
+}
+
+void calc_pbr_h2a_inner_loop(
+    inout float3 brdf,
+    inout float3 SH,
+    const in s_common_shader_data common,
+    const in float3 f0,
+    const in float3 ccf0,
+    const in float4 material_parameters,
+    int index)
+{
+    float4 direction= common.lighting_data.light_direction_specular_scalar[index];
+    float4 intensity_diffuse_scalar = common.lighting_data.light_intensity_diffuse_scalar[index];
+
+    float3 albedo = common.albedo.xyz;
+    float a2 = material_parameters.x * material_parameters.x;
+    float3 view = normalize(common.view_dir_distance.xyz);
+	float3 H = normalize(direction.xyz - view);
+    float NdotH = max(dot(H, common.normal), _epsilon);
+    float NdotV = max(dot(-view, common.normal), _epsilon);
+    float NdotL = max(dot(direction.xyz, common.normal), _epsilon);
+    float VdotH = max(dot(-view, H), _epsilon);
+#ifdef CLEARCOAT
+    float cca2 = material_parameters.y * material_parameters.y;
+    float ccMask = material_parameters.z;
+#endif
+#ifdef ANISO
+    float aniso = material_parameters.w;
+    float3 T, B;
+    orthonormal_basis(common.normal, T, B);
+    float aniso_rough_t = max(a2 * (1 - aniso), _epsilon);
+    float aniso_rough_b = max(a2 * (1 + aniso), _epsilon);
+#endif
+
+    float3 F = fresnel_schlick(f0, VdotH);
+
+#ifdef ANISO
+    float NDF = ndf_aniso_ggx(NdotH, -view, H, T, B, aniso_rough_t, aniso_rough_b);
+    float aniso_G = G_aniso(NdotH, NdotL, NdotV, -view, direction.xyz, T, B, aniso_rough_t, aniso_rough_b);
+
+    //float hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, a2);
+    float3 spec = (F * NDF * aniso_G) * NdotL * intensity_diffuse_scalar.xyz * direction.w;
+#else
+    float NDF = ndf_ggx(NdotH, a2);
+
+    float hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, a2  * a2);
+
+    float3 spec = (F * NDF / hammon_visibility) * NdotL * intensity_diffuse_scalar.xyz * direction.w;
+#endif
+    float3 diffuse = calc_hammon(common.normal, -view, direction.xyz, intensity_diffuse_scalar.xyz * direction.w, albedo, material_parameters.x);
+#ifdef CLEARCOAT
+    float3 ccF = fresnel_schlick(ccf0, VdotH);
+
+    float ccNDF = ndf_ggx(NdotH, cca2);
+    float cc_hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, cca2);
+    float3 ccSpec = (ccF * ccNDF / cc_hammon_visibility) * NdotL * intensity_diffuse_scalar.xyz * direction.w * ccMask;
+    
+    diffuse *= (1 - (ccF * ccMask));
+    spec *= pow(1 - (ccF * ccMask), 2);
+    brdf += diffuse * (1 - common.shaderValues.y) + spec + ccSpec;
+#else
+    brdf += diffuse * (1 - common.shaderValues.y) + spec;
+#endif
+    SH += NdotL * intensity_diffuse_scalar.rgb * intensity_diffuse_scalar.a;
+}
+
+    MAKE_ACCUMULATING_LOOP_3_2OUT(float3, float3, calc_pbr_h2a, float3, float3, float4, MAX_LIGHTING_COMPONENTS);
+
 #endif
 
 #endif
