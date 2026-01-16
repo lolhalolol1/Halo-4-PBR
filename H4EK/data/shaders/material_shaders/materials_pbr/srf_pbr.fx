@@ -28,19 +28,21 @@ DECLARE_SAMPLER(normal_map, "Normal Map", "Normal Map", "shaders/default_bitmaps
 	#include "used_float.fxh"
 #endif
 
-DECLARE_SAMPLER( combo_map, "Combo Map (AO, Rough, Metallic, Height)", "Combo Map", "shaders/default_bitmaps/bitmaps/color_white.tif");
+DECLARE_SAMPLER( combo_map, "Combo Map (AO, Rough, Metallic, Cov Mask)", "Combo Map", "shaders/default_bitmaps/bitmaps/color_white.tif");
 #include "next_texture.fxh"
 
-#if (defined(IRIDESCENT) || defined(CLEARCOAT) || defined(SELFILLUM))
-	DECLARE_SAMPLER( combo_map_2, "Combo Map (CC Rough, CC Mask, Cov Mask, Illum)", "Combo Map 2", "shaders/default_bitmaps/bitmaps/color_white.tif");
+#if (defined(ANISO) || defined(CLEARCOAT) || (defined(SELFILLUM) && !defined(COLOURED_ILLUM)))
+	DECLARE_SAMPLER( combo_map_2, "Combo Map (Coat Rough, Coat Mask, Aniso, Illum)", "Combo Map 2", "shaders/default_bitmaps/bitmaps/color_white.tif");
 	#include "next_texture.fxh"
 #endif
 
 #if defined(SELFILLUM)
+	#ifdef COLOURED_ILLUM
+		DECLARE_SAMPLER(illum_map, "Illum Map", "Illum Map", "shaders/default_bitmaps/bitmaps/color_white.tif");
+		#include "next_texture.fxh"
+	#endif
 	DECLARE_RGB_COLOR_WITH_DEFAULT(si_color,	"SelfIllum Color", "", float3(0,0,0));
 	#include "used_float3.fxh"
-	DECLARE_FLOAT_WITH_DEFAULT(si_intensity,	"SelfIllum Intensity", "", 0, 1, float(1.0));
-	#include "used_float.fxh"
 	DECLARE_FLOAT_WITH_DEFAULT(si_amount,	"SelfIllum Amount", "", 0, 1, float(1.0));
 	#include "used_float.fxh"
 #endif
@@ -139,7 +141,7 @@ struct s_shader_data {
 	s_common_shader_data common;
 	float4 albedo;
 	float4 combo;
-#if (defined(IRIDESCENT) || defined(CLEARCOAT) || defined(SELFILLUM))
+#if (defined(ANISO) || defined(CLEARCOAT) || defined(SELFILLUM))
 	float4 combo_2;
 #endif
 #ifdef IRIDESCENT
@@ -206,7 +208,7 @@ void pixel_pre_lighting(
 
 		float2 combo_map_uv	= transform_texcoord(uv, combo_map_transform);
 		shader_data.combo 	= sample2D(combo_map, combo_map_uv);
-#if (defined(IRIDESCENT) || defined(CLEARCOAT) || defined(SELFILLUM))
+#if (defined(ANISO) || defined(CLEARCOAT) || defined(SELFILLUM))
 		float2 combo_map_uv_2 = transform_texcoord(uv, combo_map_2_transform);
 		shader_data.combo_2 = sample2D(combo_map_2, combo_map_uv_2);
 #endif
@@ -220,7 +222,7 @@ void pixel_pre_lighting(
 #endif
 
 #ifdef ANISO
-		shader_data.aniso = clamp(anisotropy, -1.0, 1.0);
+		shader_data.aniso = clamp(anisotropy, -1.0, 1.0) * shader_data.combo_2.z;
 #endif
 		
 #ifdef TINTABLE_VERSION
@@ -253,7 +255,7 @@ void pixel_pre_lighting(
 
 #ifdef IRIDESCENT
 		{
-			float cov_mask = shader_data.combo_2.z;
+			float cov_mask = shader_data.combo.w;
 			shader_data.common.albedo.rgb *= lerp(1, specular_colour, cov_mask);
 			
 	#ifdef NORMAL_NOISE
@@ -322,14 +324,14 @@ float4 pixel_lighting(
 	//R = AO
 	//G = Roughness
 	//B = Metalicness
-	//A = Height
+	//A = Cov Mask
 	float4 combo 	= shader_data.combo;
 
-#if (defined(IRIDESCENT) || defined(CLEARCOAT) || defined(SELFILLUM))
+#if (defined(ANISO) || defined(CLEARCOAT) || defined(SELFILLUM))
 	// Sample second combo map
 	//R = CC Roughness
 	//G = CC Mask
-	//B = Cov Mask
+	//B = Aniso Mask
 	//A = emissive
     float4 combo_2 	= shader_data.combo_2;
 #endif
@@ -356,7 +358,7 @@ float4 pixel_lighting(
 
 	float4 material_parameters = float4(
 		combo.y,
-#if (defined(IRIDESCENT) || defined(CLEARCOAT) || defined(SELFILLUM))
+#if  defined(CLEARCOAT)
 		combo_2.x,
 		combo_2.y,
 #else
@@ -380,7 +382,7 @@ float4 pixel_lighting(
 #endif
 			specular_color,
 #ifdef IRIDESCENT
-			float4(f82, combo_2.z),
+			float4(f82, combo.w),
 #else
 			(float4)0.0f,
 #endif
@@ -398,7 +400,7 @@ float4 pixel_lighting(
 	float gloss = 1.0 - combo.g;
 	float3 fresnel = fresnel_schlick_roughness(specular_color, cosTheta, gloss);
 #ifdef IRIDESCENT
-	fresnel = lerp(fresnel, saturate(fresnel - fresnel_lasagne(specular_color, f82, cosTheta)), combo_2.z);
+	fresnel = lerp(fresnel, saturate(fresnel - fresnel_lasagne(specular_color, f82, cosTheta)), combo.w);
 #endif
 
 	float3 reflection = reflectionMap.a * reflectionMap.rgb * EnvBRDFApprox(fresnel, combo.g, max(dot(normal, -view), cosTheta)) * reflection_dif;
@@ -421,7 +423,13 @@ float4 pixel_lighting(
 	out_color.rgb = brdf + reflection;
 
 	#if defined(SELFILLUM)
-		float3 selfIllum = shader_data.combo_2.w * si_color * si_amount;	
+		#ifdef COLOURED_ILLUM
+			float2 color_map_uv = transform_texcoord(uv, color_map_transform);
+			float3 selfIllum = sample2DGamma(illum_map, transform_texcoord(uv, illum_map_transform)).rgb;
+			float3 selfIllum *= si_color * si_amount;
+		#else
+			float3 selfIllum = shader_data.combo_2.w * si_color * si_amount;
+		#endif
 		out_color.rgb += selfIllum;
 
 		// Output self-illum intensity as linear luminance of the added value
