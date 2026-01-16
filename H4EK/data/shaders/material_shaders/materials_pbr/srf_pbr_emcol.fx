@@ -1,3 +1,3 @@
-#define USE_TERRAIN_COMBO
 #define SELFILLUM
+#define COLOURED_ILLUM
 #include "srf_pbr.fx"

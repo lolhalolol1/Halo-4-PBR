@@ -141,7 +141,7 @@ struct s_shader_data {
 	s_common_shader_data common;
 	float4 albedo;
 	float4 combo;
-#if (defined(ANISO) || defined(CLEARCOAT) || defined(SELFILLUM))
+#if (defined(ANISO) || defined(CLEARCOAT) ||  (defined(SELFILLUM) && !defined(COLOURED_ILLUM)))
 	float4 combo_2;
 #endif
 #ifdef IRIDESCENT
@@ -208,7 +208,7 @@ void pixel_pre_lighting(
 
 		float2 combo_map_uv	= transform_texcoord(uv, combo_map_transform);
 		shader_data.combo 	= sample2D(combo_map, combo_map_uv);
-#if (defined(ANISO) || defined(CLEARCOAT) || defined(SELFILLUM))
+#if (defined(ANISO) || defined(CLEARCOAT) ||  (defined(SELFILLUM) && !(defined(COLOURED_ILLUM))))
 		float2 combo_map_uv_2 = transform_texcoord(uv, combo_map_2_transform);
 		shader_data.combo_2 = sample2D(combo_map_2, combo_map_uv_2);
 #endif
@@ -327,7 +327,7 @@ float4 pixel_lighting(
 	//A = Cov Mask
 	float4 combo 	= shader_data.combo;
 
-#if (defined(ANISO) || defined(CLEARCOAT) || defined(SELFILLUM))
+#if (defined(ANISO) || defined(CLEARCOAT) ||  (defined(SELFILLUM) && !defined(COLOURED_ILLUM)))
 	// Sample second combo map
 	//R = CC Roughness
 	//G = CC Mask
@@ -426,7 +426,7 @@ float4 pixel_lighting(
 		#ifdef COLOURED_ILLUM
 			float2 color_map_uv = transform_texcoord(uv, color_map_transform);
 			float3 selfIllum = sample2DGamma(illum_map, transform_texcoord(uv, illum_map_transform)).rgb;
-			float3 selfIllum *= si_color * si_amount;
+			selfIllum *= si_color * si_amount;
 		#else
 			float3 selfIllum = shader_data.combo_2.w * si_color * si_amount;
 		#endif
