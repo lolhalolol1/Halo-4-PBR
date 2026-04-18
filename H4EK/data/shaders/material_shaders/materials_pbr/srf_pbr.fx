@@ -97,11 +97,8 @@ DECLARE_FLOAT_WITH_DEFAULT(metallic_offset, "Metallic Offset", "", 0, 1, float(0
 DECLARE_FLOAT_WITH_DEFAULT(ao_scale, "AO Scale", "", 0, 1, float(1.0));
 #include "used_float.fxh"
 
-DECLARE_FLOAT_WITH_DEFAULT(emissive, "Emissive Multiplier", "", 0, 1, float(0.0));
-#include "used_float.fxh"
-
-DECLARE_FLOAT_WITH_DEFAULT(reflection_intensity, "Reflection Intensity", "", 0, 10, float(1.0));
-#include "used_float.fxh"
+//DECLARE_FLOAT_WITH_DEFAULT(reflection_intensity_please_dont_use, "Reflection Intensity (don't use this it is not physically accurate)", "", 0, 10, float(1.0));
+//#include "used_float.fxh"
 
 #if defined(ALPHA_CLIP)
 #define MATERIAL_SHADER_ANNOTATIONS 	<bool is_alpha_clip = true;>
