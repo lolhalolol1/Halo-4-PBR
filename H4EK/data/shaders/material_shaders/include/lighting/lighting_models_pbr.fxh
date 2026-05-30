@@ -63,7 +63,7 @@ float3 fresnel_schlick_roughness(
 {
     return f0 + (max(gloss, f0) - f0) * pow(1 - cosTheta, 5);
 }
-float3 fresnel_lasagne(
+/*float3 fresnel_lasagne(
     in float3 f0,
     in float3 f82,
     in float cosTheta
@@ -71,7 +71,7 @@ float3 fresnel_lasagne(
 {
     float3 a_lazanyi = 17.6513846 * (f0 - f82) + 8.16666667 * (1 - f0);
     return a_lazanyi * cosTheta * pow(1 - cosTheta, 6);
-}
+}*/
 
 float ndf_aniso_ggx(
     in float NdotH,
@@ -100,15 +100,17 @@ float g_smith(
     in float a
     )
 {
-    float a2 = a * a;
+    //float a2 = a * a;
     /*float g_1 = 2.0f * NdotV 
                 / 
                 (sqrt(a2 + (1 - a2) * (NdotV * NdotV)) + NdotV);*/
 
-    float g_2 = 2 * NdotL * NdotV
+    /*float g_2 = 2 * NdotL * NdotV
                 /
                 max(NdotV * sqrt(a2 + (1 - a2) * (NdotL * NdotL)) + NdotL * sqrt(a2 + (1 - a2) * (NdotV * NdotV)), _epsilon);
-    return g_2;
+    return g_2;*/
+    float visibility_term = (NdotL/(NdotL * ( 1 - a) + a)) * (NdotV/(NdotV * (1 - a) + a));
+    return visibility_term;
 }
 
 float G_aniso(
@@ -233,10 +235,10 @@ void calc_pbr_initializer(
         fresnel_schlick(f0, VdotH.x),
         fresnel_schlick(f0, VdotH.y)
     };
-#ifdef IRIDESCENT
+/*#ifdef IRIDESCENT
     F[0] = lerp(F[0], saturate(F[0] - fresnel_lasagne(f0, f82.rgb, VdotH.x)), f82.w);
     F[1] = lerp(F[1], saturate(F[0] - fresnel_lasagne(f0, f82.rgb, VdotH.y)), f82.w);
-#endif
+#endif*/
 
 #ifdef ANISO
     float aniso = material_parameters.w;
@@ -264,15 +266,15 @@ void calc_pbr_initializer(
                         ndf_ggx(NdotH.x, a2.x),
                         ndf_ggx(NdotH.y, a2.y));
 
-    float2 hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, a2.xx );
+    //float2 hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, a2.xx );
 
     float2 G = float2(
                     g_smith(NdotL.x, NdotV, a2.x),
                     g_smith(NdotL.y, NdotV, a2.x));
     float3 spec[2] = 
     {
-        (F[0] * NDF.x / hammon_visibility.x) * NdotL.x * common.lighting_data.vmf_data.coefficients[1].xyz,
-        (F[1] * NDF.y / hammon_visibility.y) * NdotL.y * common.lighting_data.vmf_data.coefficients[3].xyz
+        (F[0] * NDF.x * G.x) * NdotL.x * common.lighting_data.vmf_data.coefficients[1].xyz,
+        (F[1] * NDF.y * G.y) * NdotL.y * common.lighting_data.vmf_data.coefficients[3].xyz
     }; 
 #endif
 
@@ -307,14 +309,17 @@ void calc_pbr_initializer(
                     ndf_ggx(ccNdotH.x, cca2.x),
                     ndf_ggx(ccNdotH.x, cca2.y));
 
-    float2 cc_hammon_visibility = 2 * lerp(2 * ccNdotL * ccNdotV, ccNdotL + ccNdotV, cca2.xx);
+    float2 ccG = float2(
+                    g_smith(NdotL, NdotV, cca2.x),
+                    g_smith(NdotL, NdotV, cca2.x)
+    );
 
     float3 ccSpec[2] =
     {
-        (ccF[0] * ccNDF.x / cc_hammon_visibility.x) * ccNdotL.x * common.lighting_data.vmf_data.coefficients[1].xyz * ccMask,
-        (ccF[1] * ccNDF.y / cc_hammon_visibility.y) * ccNdotL.y * common.lighting_data.vmf_data.coefficients[3].xyz * ccMask
+        (ccF[0] * ccNDF.x * ccG.x) * ccNdotL.x * common.lighting_data.vmf_data.coefficients[1].xyz * ccMask,
+        (ccF[1] * ccNDF.y * ccG.y) * ccNdotL.y * common.lighting_data.vmf_data.coefficients[3].xyz * ccMask
     };
-    vmfDif0 *= (1 - (ccF[0]  * ccMask));
+    vmfDif0 *= (1 - (ccF[0] * ccMask));
     vmfDif1 *= (1 - (ccF[1] * ccMask));
     spec[0] *= pow(1 - (ccF[0] * ccMask), 2);
     spec[1] *= pow(1 - (ccF[1] * ccMask), 2);
@@ -371,9 +376,9 @@ void calc_pbr_inner_loop(
 
     float3 F = fresnel_schlick(f0, VdotH);
 
-#ifdef IRIDESCENT
+/*#ifdef IRIDESCENT
     F = lerp(F, saturate(F - fresnel_lasagne(f0, f82.rgb, VdotH)), f82.w);
-#endif
+#endif*/
 
 #ifdef ANISO
     float NDF = ndf_aniso_ggx(NdotH, -view, H, T, B, aniso_rough_t, aniso_rough_b);
@@ -384,9 +389,9 @@ void calc_pbr_inner_loop(
 #else
     float NDF = ndf_ggx(NdotH, a2);
 
-    float hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, a2  * a2);
+    float G = g_smith(NdotL, NdotV, a2);//hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, a2  * a2);
 
-    float3 spec = (F * NDF / hammon_visibility) * NdotL * intensity_diffuse_scalar.xyz * direction.w;
+    float3 spec = (F * NDF * G) * NdotL * intensity_diffuse_scalar.xyz * direction.w;
 #endif
     float3 diffuse = calc_hammon(common.normal, -view, direction.xyz, intensity_diffuse_scalar.xyz * direction.w, albedo, material_parameters.x);
 #ifdef CLEARCOAT
@@ -396,8 +401,8 @@ void calc_pbr_inner_loop(
     float ccNdotL = max(dot(direction.xyz, normal), _epsilon);
 
     float ccNDF = ndf_ggx(ccNdotH, cca2);
-    float cc_hammon_visibility = 2 * lerp(2 * ccNdotL * ccNdotV, ccNdotL + ccNdotV, cca2);
-    float3 ccSpec = (ccF * ccNDF / cc_hammon_visibility) * ccNdotL * intensity_diffuse_scalar.xyz * direction.w * ccMask;
+    float ccG = g_smith(NdotL, NdotV, cca2);
+    float3 ccSpec = (ccF * ccNDF * ccG) * ccNdotL * intensity_diffuse_scalar.xyz * direction.w * ccMask;
     
     diffuse *= (1 - (ccF * ccMask));
     spec *= pow(1 - (ccF * ccMask), 2);
@@ -408,7 +413,7 @@ void calc_pbr_inner_loop(
     SH += NdotL * intensity_diffuse_scalar.rgb * intensity_diffuse_scalar.a;
 }
 
-    MAKE_ACCUMULATING_LOOP_3_2OUTS(float3, float3, calc_pbr, float3, float3, float4, float4, MAX_LIGHTING_COMPONENTS);
+    MAKE_ACCUMULATING_LOOP_4_2OUT(float3, float3, calc_pbr, float3, float3, float4, float4, MAX_LIGHTING_COMPONENTS);
 
 #ifdef SKIN_BRDF
 //adding calc_ggx back here so I can avoid changing VMFSkinPBR and srf_skin.fx to handle the BRDF in those place because I'm lazy :)
@@ -434,11 +439,11 @@ float3 calc_ggx(
 
     float NDF = ndf_ggx(NdotH, a2);
 
-    float hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, a2);
-
-    float3 numerator =  NDF * 
-                        F;
-    return (NDF * F / hammon_visibility) * light_irradiance * NdotL;
+    //float hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, a2);
+    float G = g_smith(NdotL, NdotV, a2);
+    /*float3 numerator =  NDF * 
+                        F;*/
+    return (NDF * F * G) * light_irradiance * NdotL;
 }
 
 float3 VMFSkinPBR(
@@ -636,15 +641,15 @@ void calc_pbr_h2a_initializer(
                         ndf_ggx(NdotH.x, a2.x),
                         ndf_ggx(NdotH.y, a2.y));
 
-    float2 hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, a2.xx );
+    //float2 hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, a2.xx );
 
     float2 G = float2(
                     g_smith(NdotL.x, NdotV, a2.x),
                     g_smith(NdotL.y, NdotV, a2.x));
     float3 spec[2] = 
     {
-        (F[0] * NDF.x / hammon_visibility.x) * NdotL.x * common.lighting_data.vmf_data.coefficients[1].xyz,
-        (F[1] * NDF.y / hammon_visibility.y) * NdotL.y * common.lighting_data.vmf_data.coefficients[3].xyz
+        (F[0] * NDF.x * G.x) * NdotL.x * common.lighting_data.vmf_data.coefficients[1].xyz,
+        (F[1] * NDF.y * G.y) * NdotL.y * common.lighting_data.vmf_data.coefficients[3].xyz
     }; 
 #endif
 
@@ -668,15 +673,17 @@ void calc_pbr_h2a_initializer(
         fresnel_schlick(ccf0, VdotH.y)
     };
     float2 ccNDF = float2(
-                    ndf_ggx(NdotH.x, a2.x),
-                    ndf_ggx(NdotH.x, a2.y));
+                    ndf_ggx(NdotH.x, cca2.x),
+                    ndf_ggx(NdotH.x, cca2.y));
 
-    float2 cc_hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, cca2.xx);
+    float2 ccG = float2(
+                    g_smith(NdotL.x, NdotV, cca2.x),
+                    g_smith(NdotL.y, NdotV, cca2.x));
 
     float3 ccSpec[2] =
     {
-        (ccF[0] * ccNDF.x / cc_hammon_visibility.x) * NdotL.x * common.lighting_data.vmf_data.coefficients[1].xyz * ccMask,
-        (ccF[1] * ccNDF.y / cc_hammon_visibility.y) * NdotL.y * common.lighting_data.vmf_data.coefficients[3].xyz * ccMask
+        (ccF[0] * ccNDF.x * ccG.x) * NdotL.x * common.lighting_data.vmf_data.coefficients[1].xyz * ccMask,
+        (ccF[1] * ccNDF.y * ccG.y) * NdotL.y * common.lighting_data.vmf_data.coefficients[3].xyz * ccMask
     };
     vmfDif0 *= (1 - (ccF[0]  * ccMask));
     vmfDif1 *= (1 - (ccF[1] * ccMask));
@@ -743,17 +750,17 @@ void calc_pbr_h2a_inner_loop(
 #else
     float NDF = ndf_ggx(NdotH, a2);
 
-    float hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, a2  * a2);
+    float G = g_smith(NdotL, NdotV, a2);
 
-    float3 spec = (F * NDF / hammon_visibility) * NdotL * intensity_diffuse_scalar.xyz * direction.w;
+    float3 spec = (F * NDF * G) * NdotL * intensity_diffuse_scalar.xyz * direction.w;
 #endif
     float3 diffuse = calc_hammon(common.normal, -view, direction.xyz, intensity_diffuse_scalar.xyz * direction.w, albedo, material_parameters.x);
 #ifdef CLEARCOAT
     float3 ccF = fresnel_schlick(ccf0, VdotH);
 
     float ccNDF = ndf_ggx(NdotH, cca2);
-    float cc_hammon_visibility = 2 * lerp(2 * NdotL * NdotV, NdotL + NdotV, cca2);
-    float3 ccSpec = (ccF * ccNDF / cc_hammon_visibility) * NdotL * intensity_diffuse_scalar.xyz * direction.w * ccMask;
+    float ccG = g_smith(NdotL, NdotV, cca2);
+    float3 ccSpec = (ccF * ccNDF * ccG) * NdotL * intensity_diffuse_scalar.xyz * direction.w * ccMask;
     
     diffuse *= (1 - (ccF * ccMask));
     spec *= pow(1 - (ccF * ccMask), 2);

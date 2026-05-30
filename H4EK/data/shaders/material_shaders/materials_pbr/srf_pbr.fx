@@ -112,7 +112,8 @@ DECLARE_FLOAT_WITH_DEFAULT(spec_coeff, "Specular Coefficient", "", 0.0, 0.07, fl
     #include "used_float3.fxh"
     DECLARE_RGB_COLOR_WITH_DEFAULT(fresnel_colour,	"Fresnel Colour", "", float3(1.0,1.0,1.0));
     #include "used_float3.fxh"
-
+	DECLARE_FLOAT_WITH_DEFAULT(fresnel_power,	"Fresnel Power", "", 0, 10, float(1.0));
+	#include "used_float.fxh"
 	#if defined(NORMAL_NOISE)
 		DECLARE_SAMPLER( normal_noise_map, "Normal Noise Map", "Normal Noise Map", "shaders/default_bitmaps/bitmaps/default_normal.tif");
 		#include "next_texture.fxh"
@@ -141,9 +142,9 @@ struct s_shader_data {
 #if (defined(ANISO) || defined(CLEARCOAT) ||  (defined(SELFILLUM) && !defined(COLOURED_ILLUM)))
 	float4 combo_2;
 #endif
-#ifdef IRIDESCENT
-	float3 f82;
-#endif
+/*#ifdef IRIDESCENT
+	float4 f82;
+#endif*/
 #ifdef CLEARCOAT
 	float3 clearcoat_normal;
 #endif
@@ -253,12 +254,13 @@ void pixel_pre_lighting(
 #ifdef IRIDESCENT
 		{
 			float cov_mask = shader_data.combo.w;
-			shader_data.common.albedo.rgb *= lerp(1, specular_colour, cov_mask);
-			
 	#ifdef NORMAL_NOISE
 			shader_data.common.normal = lerp(shader_data.common.normal, normal_chameleon, cov_mask);
 	#endif
-			shader_data.f82 = fresnel_colour;
+			float3 cov_colour = shader_data.common.albedo.rgb * lerp(fresnel_colour, specular_colour, pow(dot(shader_data.common.normal.xyz, -shader_data.common.view_dir_distance.xyz), fresnel_power));
+			//shader_data.f82.rgb = fresnel_colour;
+			shader_data.common.albedo.rgb = lerp(shader_data.common.albedo.rgb, cov_colour, cov_mask);
+
 		}
 #endif
 		
@@ -338,9 +340,9 @@ float4 pixel_lighting(
 
 	float3 specular_color = lerp(clamp(spec_coeff, 0.0, 0.07), albedo.rgb, combo.b);	//get f0 from albedo with metalness mask.
 
-#ifdef IRIDESCENT
+/*#ifdef IRIDESCENT
 	float3 f82 = shader_data.f82;
-#endif
+#endif*/
 
 #ifdef CLEARCOAT //adjust f0 to account for clearcoat
 	specular_color = lerp(specular_color, pow(1 - 5 * sqrt(specular_color), 2) / pow(5 - sqrt(specular_color), 2), combo_2.y);
@@ -378,11 +380,11 @@ float4 pixel_lighting(
 			(float3)0.0,
 #endif
 			specular_color,
-#ifdef IRIDESCENT
+/*#ifdef IRIDESCENT
 			float4(f82, combo.w),
-#else
+#else*/
 			(float4)0.0f,
-#endif
+//#endif
 			material_parameters
 			);
 
@@ -396,9 +398,9 @@ float4 pixel_lighting(
 	float4 reflectionMap = sampleCUBELOD(reflection_map, rVec, mip_index);
 	float gloss = 1.0 - combo.g;
 	float3 fresnel = fresnel_schlick_roughness(specular_color, cosTheta, gloss);
-#ifdef IRIDESCENT
+/*#ifdef IRIDESCENT
 	fresnel = lerp(fresnel, saturate(fresnel - fresnel_lasagne(specular_color, f82, cosTheta)), combo.w);
-#endif
+#endif*/
 
 	float3 reflection = reflectionMap.a * reflectionMap.rgb * EnvBRDFApprox(fresnel, combo.g, max(dot(normal, -view), cosTheta)) * reflection_dif;
 
