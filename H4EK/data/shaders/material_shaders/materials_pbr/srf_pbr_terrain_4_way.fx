@@ -203,7 +203,7 @@ float4 pixel_lighting(
 	//calculate diffuse
 	float3 brdf = cavity_ao;
 	float3 reflection_dif = 0.0f;
-	calc_pbr(brdf, reflection_dif,  shader_data.common, normal, specular_color, 0.0, rough);
+	calc_pbr(brdf, reflection_dif,  shader_data.common, normal, specular_color, rough);
 	
 	// sample reflection
 	float3 view = shader_data.common.view_dir_distance.xyz;

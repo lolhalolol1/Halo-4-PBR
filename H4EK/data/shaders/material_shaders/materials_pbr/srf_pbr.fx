@@ -382,9 +382,9 @@ float4 pixel_lighting(
 			specular_color,
 /*#ifdef IRIDESCENT
 			float4(f82, combo.w),
-#else*/
+#else
 			(float4)0.0f,
-//#endif
+#endif*/
 			material_parameters
 			);
 
