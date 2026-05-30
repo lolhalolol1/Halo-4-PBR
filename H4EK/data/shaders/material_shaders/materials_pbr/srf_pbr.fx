@@ -257,7 +257,7 @@ void pixel_pre_lighting(
 	#ifdef NORMAL_NOISE
 			shader_data.common.normal = lerp(shader_data.common.normal, normal_chameleon, cov_mask);
 	#endif
-			float3 cov_colour = shader_data.common.albedo.rgb * lerp(fresnel_colour, specular_colour, pow(dot(shader_data.common.normal.xyz, -shader_data.common.view_dir_distance.xyz), fresnel_power));
+			float3 cov_colour = shader_data.common.albedo.rgb * lerp(specular_colour, fresnel_colour, pow(1 - dot(shader_data.common.normal.xyz, -shader_data.common.view_dir_distance.xyz), fresnel_power));
 			//shader_data.f82.rgb = fresnel_colour;
 			shader_data.common.albedo.rgb = lerp(shader_data.common.albedo.rgb, cov_colour, cov_mask);
 
