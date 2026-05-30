@@ -199,7 +199,6 @@ void calc_pbr_initializer(
     const in s_common_shader_data common,
     const in float3 normal,
     const in float3 f0,
-    const in float4 f82,
     const in float4 material_parameters)
 {
     //SH = 0.0f;
@@ -347,7 +346,6 @@ void calc_pbr_inner_loop(
     const in s_common_shader_data common,
     const in float3 normal,
     const in float3 f0,
-    const in float4 f82,
     const in float4 material_parameters,
     int index)
 {
@@ -413,7 +411,7 @@ void calc_pbr_inner_loop(
     SH += NdotL * intensity_diffuse_scalar.rgb * intensity_diffuse_scalar.a;
 }
 
-    MAKE_ACCUMULATING_LOOP_4_2OUT(float3, float3, calc_pbr, float3, float3, float4, float4, MAX_LIGHTING_COMPONENTS);
+    MAKE_ACCUMULATING_LOOP_3_2OUT(float3, float3, calc_pbr, float3, float3, float4, MAX_LIGHTING_COMPONENTS);
 
 #ifdef SKIN_BRDF
 //adding calc_ggx back here so I can avoid changing VMFSkinPBR and srf_skin.fx to handle the BRDF in those place because I'm lazy :)
