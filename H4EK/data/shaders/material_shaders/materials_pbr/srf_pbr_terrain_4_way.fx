@@ -30,6 +30,10 @@ DECLARE_SAMPLER_2D_ARRAY(color_map, "Color Map Array", "Color Map", "shaders/def
 	DECLARE_SAMPLER_2D_ARRAY(detail_color_map, "Detail Color Map Array", "Detail Color Map", "shaders/default_bitmaps/bitmaps/default_diff.tif");
 	#include "next_texture.fxh"
 #endif
+#ifdef MACRO_ASSET
+	DECLARE_SAMPLER(macro_albedo, "Macro Albedo Map", "", "shaders/default_bitmaps/bitmaps/default_diff.tif");
+	#include "next_texture.fxh"
+#endif
 
 DECLARE_FLOAT_WITH_DEFAULT(red_diffuse_map,     "Red Channel Albedo Map",   "", 0, 4, 0.0);
 #include "used_float.fxh"
@@ -42,6 +46,12 @@ DECLARE_FLOAT_WITH_DEFAULT(alpha_diffuse_map,   "Alpha Channel Albedo Map",   ""
 
 DECLARE_SAMPLER_2D_ARRAY(normal_map, "Normal Map Array", "Normal Map", "shaders/default_bitmaps/bitmaps/default_normal.tif");
 #include "next_texture.fxh"
+#ifdef MACRO_ASSET
+	DECLARE_SAMPLER(macro_normal, "Macro Normal Map", "", "shaders/default_bitmaps/bitmaps/default_normal.tif");
+	#include "next_texture.fxh"
+	DECLARE_FLOAT_WITH_DEFAULT(macro_normal_strength, "Macro Normal Strength", "", 0, 1.0, 1.0);
+	#include "used_float.fxh"
+#endif
 DECLARE_FLOAT_WITH_DEFAULT(red_normal_map,      "Red Channel Normal Map",   "", 0, 4, 0.0);
 #include "used_float.fxh"
 DECLARE_FLOAT_WITH_DEFAULT(green_normal_map,    "Green Channel Normal Map", "", 0, 4, 1.0);
@@ -50,6 +60,7 @@ DECLARE_FLOAT_WITH_DEFAULT(blue_normal_map,     "Blue Channel Normal Map",   "",
 #include "used_float.fxh"
 DECLARE_FLOAT_WITH_DEFAULT(alpha_normal_map,    "Alpha Channel Normal Map",   "", 0, 4, 4.0);
 #include "used_float.fxh"
+
 
 DECLARE_SAMPLER_2D_ARRAY(combo_map, "Combo Map Array", "Combo Map", "shaders/default_bitmaps/bitmaps/color_white.tif");
 #include "next_texture.fxh"
@@ -129,13 +140,13 @@ void pixel_pre_lighting(
 		shader_data.common.normal = normals[0] + normals[1] + normals[2] + normals[3];
 
 		// Transform from tangent space to world space
+	#ifdef MACRO_ASSET
+		shader_data.common.normal = CompositeDetailNormalMap(shader_data.common.normal, macro_normal, transform_texcoord(uv, macro_normal_transform), macro_normal_strength);
+	#endif
 		shader_data.common.normal = mul(shader_data.common.normal, shader_data.common.tangent_frame);
     }
 
     {// Sample color map.
-
-
-
 		float4 colours[4] = {
 								sample3DGamma(color_map, float3(mat_uv[0], red_diffuse_map)) * blend.x,
 								sample3DGamma(color_map, float3(mat_uv[1], green_diffuse_map)) * blend.y,
@@ -145,6 +156,10 @@ void pixel_pre_lighting(
 
 		shader_data.common.albedo = saturate(colours[0] + colours[1] + colours[2] + colours[3]);
 
+		#ifdef MACRO_ASSET
+			float4 m_albedo = sample2DGamma(macro_albedo, transform_texcoord(uv, macro_albedo_transform));
+			shader_data.common.albedo = albedo_colour_overlay(shader_data.common.albedo, m_albedo);
+		#endif
 		/*#ifdef DETAIL_ALBDEO
 			float4	detail_albedo =	sample2DGamma(detail_color_map, transform_texcoord(uv, detail_color_map_transform));
 			shader_data.common.albedo.rgb *= detail_albedo.rgb;
