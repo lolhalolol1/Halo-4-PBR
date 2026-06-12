@@ -28,7 +28,7 @@ DECLARE_SAMPLER(normal_map, "Normal Map", "Normal Map", "shaders/default_bitmaps
 	#include "used_float.fxh"
 #endif
 
-DECLARE_SAMPLER( combo_map, "Combo Map (AO, Rough, Metallic, Cov Mask)", "Combo Map", "shaders/default_bitmaps/bitmaps/color_white.tif");
+DECLARE_SAMPLER( combo_map, "Combo Map (AO, Rough, Metallic, Cov Mask)", "Combo Map", "shaders/default_bitmaps/bitmaps/default_orm.tif");
 #include "next_texture.fxh"
 
 #if (defined(ANISO) || defined(CLEARCOAT) || (defined(SELFILLUM) && !defined(COLOURED_ILLUM)))

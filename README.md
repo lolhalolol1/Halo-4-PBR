@@ -1,6 +1,6 @@
 # Halo 4 PBR
 A set of shaders made for Halo 4 and Halo 2 Anniversary Multiplayer that allow you to use modern BRDFs for material rendering and more modern, standerdized workflows for authoring materials.
-Credit to the Oomer and Chiefster who's shaders I used as reference for how to work with Halo 4's functions, theChunkierBean for testing, and theHostileNegotiator and Amit for important help and feedback.
+Credit to the Oomer and Chiefster who's shaders I used as reference for how to work with Halo 4's functions, theChunkierBean for testing, and theHostileNegotiator and Amit for allowing me to use his triplanar functions and giving me important help and feedback.
 
 ## Installation
 To install, simply download and drag-n-drop the "tags" folder for the toolset you are using into the folder into your editing kit's root folder.

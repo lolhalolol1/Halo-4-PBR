@@ -62,7 +62,7 @@ DECLARE_FLOAT_WITH_DEFAULT(alpha_normal_map,    "Alpha Channel Normal Map",   ""
 #include "used_float.fxh"
 
 
-DECLARE_SAMPLER_2D_ARRAY(combo_map, "Combo Map Array", "Combo Map", "shaders/default_bitmaps/bitmaps/color_white.tif");
+DECLARE_SAMPLER_2D_ARRAY(combo_map, "Combo Map Array", "Combo Map", "shaders/default_bitmaps/bitmaps/default_orm.tif");
 #include "next_texture.fxh"
 DECLARE_FLOAT_WITH_DEFAULT(red_combo_map,     "Red Channel Control Map",  "", 0, 4, 0.0);
 #include "used_float.fxh"
@@ -130,10 +130,17 @@ void pixel_pre_lighting(
     {
 		// Sample normal maps
 		float3 normals[4] = {
+		#ifdef MACRO_ASSET
+								world_space_triplanar_2d_array_normal(normal_map, float4(red_uv_tile, red_uv_tile, 0.0f, 0.0f), shader_data.common.position.xyz, shader_data.common.geometricNormal.xyz, red_normal_map) * blend.x,
+								world_space_triplanar_2d_array_normal(normal_map, float4(red_uv_tile, green_uv_tile, 0.0f, 0.0f), shader_data.common.position.xyz, shader_data.common.geometricNormal.xyz, green_normal_map) * blend.y,
+								world_space_triplanar_2d_array_normal(normal_map, float4(blue_uv_tile, blue_uv_tile, 0.0f, 0.0f), shader_data.common.position.xyz, shader_data.common.geometricNormal.xyz, blue_normal_map) * blend.z,
+								world_space_triplanar_2d_array_normal(normal_map, float4(alpha_uv_tile, alpha_uv_tile, 0.0f, 0.0f), shader_data.common.position.xyz, shader_data.common.geometricNormal.xyz, alpha_normal_map) * blend.w		
+		#else
 								sample3DNormal(normal_map, float3(mat_uv[0], red_normal_map)).xyz * blend.x,
 								sample3DNormal(normal_map, float3(mat_uv[1], green_normal_map)).xyz * blend.y,
 								sample3DNormal(normal_map, float3(mat_uv[2], blue_normal_map)).xyz * blend.z,
 								sample3DNormal(normal_map, float3(mat_uv[3], alpha_normal_map)).xyz * blend.w
+		#endif
 							};
         //float3 base_normal = sample2DNormal(normal_map, normal_uv);
 		// Use the base normal map
@@ -147,11 +154,19 @@ void pixel_pre_lighting(
     }
 
     {// Sample color map.
+		
 		float4 colours[4] = {
+	#ifdef MACRO_ASSET
+								world_space_triplanar_2d_array(color_map, float4(red_uv_tile, red_uv_tile, 0.0f, 0.0f), shader_data.common.position.xyz, shader_data.common.geometricNormal.xyz, red_diffuse_map) * blend.x,
+								world_space_triplanar_2d_array(color_map, float4(green_uv_tile, green_uv_tile, 0.0f, 0.0f), shader_data.common.position.xyz, shader_data.common.geometricNormal.xyz, green_diffuse_map) * blend.y,
+								world_space_triplanar_2d_array(color_map, float4(blue_uv_tile, blue_uv_tile, 0.0f, 0.0f), shader_data.common.position.xyz, shader_data.common.geometricNormal.xyz, blue_diffuse_map) * blend.z,
+								world_space_triplanar_2d_array(color_map, float4(alpha_uv_tile, alpha_uv_tile, 0.0f, 0.0f), shader_data.common.position.xyz, shader_data.common.geometricNormal.xyz, alpha_diffuse_map) * blend.w
+	#else
 								sample3DGamma(color_map, float3(mat_uv[0], red_diffuse_map)) * blend.x,
 								sample3DGamma(color_map, float3(mat_uv[1], green_diffuse_map)) * blend.y,
 								sample3DGamma(color_map, float3(mat_uv[2], blue_diffuse_map)) * blend.z,
 								sample3DGamma(color_map, float3(mat_uv[3], alpha_diffuse_map)) * blend.w
+	#endif
 							};
 
 		shader_data.common.albedo = saturate(colours[0] + colours[1] + colours[2] + colours[3]);
@@ -169,14 +184,24 @@ void pixel_pre_lighting(
 		//shader_data.common.albedo.rgb *= albedo_tint;
 
 		float4 combos[4] = {
+		#ifdef MACRO_ASSET
+								world_space_triplanar_2d_array(combo_map, float4(red_uv_tile, red_uv_tile, 0.0f, 0.0f), shader_data.common.position.xyz, shader_data.common.geometricNormal.xyz, red_combo_map) * blend.x,
+								world_space_triplanar_2d_array(combo_map, float4(green_uv_tile, green_uv_tile, 0.0f, 0.0f), shader_data.common.position.xyz, shader_data.common.geometricNormal.xyz, green_combo_map) * blend.y,
+								world_space_triplanar_2d_array(combo_map, float4(blue_uv_tile, blue_uv_tile, 0.0f, 0.0f), shader_data.common.position.xyz, shader_data.common.geometricNormal.xyz, blue_combo_map) * blend.z,
+								world_space_triplanar_2d_array(combo_map, float4(alpha_uv_tile, alpha_uv_tile, 0.0f, 0.0f), shader_data.common.position.xyz, shader_data.common.geometricNormal.xyz, alpha_combo_map) * blend.w
+		#else
 								sample3D(combo_map, float3(mat_uv[0], red_combo_map)) * blend.x,
 								sample3D(combo_map, float3(mat_uv[1], green_combo_map)) * blend.y,
 								sample3D(combo_map, float3(mat_uv[2], blue_combo_map)) * blend.z,
 								sample3D(combo_map, float3(mat_uv[3], alpha_combo_map)) * blend.w
+		#endif
 							};
 		shader_data.combo 	= combos[0] + combos[1] + combos[2] + combos[3];
-
+	#ifdef MACRO_ASSET
+		shader_data.combo.r = saturate(ao_scale * m_albedo.w * shader_data.combo.r);
+	#else
 		shader_data.combo.r = saturate(ao_scale * shader_data.combo.r);
+	#endif
 		shader_data.combo.g = saturate((roughness_scale * shader_data.combo.g) + roughness_offset);
 		shader_data.combo.b = saturate((metallic_scale * shader_data.combo.b) + metallic_offset);
 		//shader_data.common.shaderValues.x = shader_data.combo.b;
